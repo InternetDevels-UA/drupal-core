@@ -5,6 +5,7 @@
  * Administration functions for editor.module.
  */
 
+use Drupal\Component\Utility\SafeMarkup;
 use Drupal\editor\Entity\Editor;
 
 /**
@@ -22,12 +23,11 @@ use Drupal\editor\Entity\Editor;
  *   The image upload settings form.
  *
  * @see \Drupal\editor\Form\EditorImageDialog
- * @ingroup forms
  */
 function editor_image_upload_settings_form(Editor $editor) {
   // Defaults.
-  $editor->image_upload = isset($editor->image_upload) ? $editor->image_upload : array();
-  $editor->image_upload += array(
+  $image_upload = $editor->getImageUploadSettings();
+  $image_upload += array(
     'status' => FALSE,
     'scheme' => file_default_scheme(),
     'directory' => 'inline-images',
@@ -38,7 +38,7 @@ function editor_image_upload_settings_form(Editor $editor) {
   $form['status'] = array(
     '#type' => 'checkbox',
     '#title' => t('Enable image uploads'),
-    '#default_value' => $editor->image_upload['status'],
+    '#default_value' => $image_upload['status'],
     '#attributes' => array(
       'data-editor-image-upload' => 'status',
     ),
@@ -59,7 +59,7 @@ function editor_image_upload_settings_form(Editor $editor) {
     $form['scheme'] = array(
       '#type' => 'radios',
       '#title' => t('File storage'),
-      '#default_value' => $editor->image_upload['scheme'],
+      '#default_value' => $image_upload['scheme'],
       '#options' => $options,
       '#states' => $show_if_image_uploads_enabled,
       '#access' => count($options) > 1,
@@ -74,7 +74,7 @@ function editor_image_upload_settings_form(Editor $editor) {
 
   $form['directory'] = array(
     '#type' => 'textfield',
-    '#default_value' => $editor->image_upload['directory'],
+    '#default_value' => $image_upload['directory'],
     '#title' => t('Upload directory'),
     '#description' => t("A directory relative to Drupal's files directory where uploaded images will be stored."),
     '#states' => $show_if_image_uploads_enabled,
@@ -83,7 +83,7 @@ function editor_image_upload_settings_form(Editor $editor) {
   $default_max_size = format_size(file_upload_max_size());
   $form['max_size'] = array(
     '#type' => 'textfield',
-    '#default_value' => $editor->image_upload['max_size'],
+    '#default_value' => $image_upload['max_size'],
     '#title' => t('Maximum file size'),
     '#description' => t('If this is left empty, then the file size will be limited by the PHP maximum upload size of @size.', array('@size' => $default_max_size)),
     '#maxlength' => 20,
@@ -95,8 +95,8 @@ function editor_image_upload_settings_form(Editor $editor) {
   $form['max_dimensions'] = array(
     '#type' => 'item',
     '#title' => t('Maximum dimensions'),
-    '#field_prefix' => '<div class="container-inline clearfix">',
-    '#field_suffix' => '</div>',
+    '#field_prefix' => SafeMarkup::set('<div class="container-inline clearfix">'),
+    '#field_suffix' => SafeMarkup::set('</div>'),
     '#description' => t('Images larger than these dimensions will be scaled down.'),
     '#states' => $show_if_image_uploads_enabled,
   );
@@ -104,7 +104,7 @@ function editor_image_upload_settings_form(Editor $editor) {
     '#title' => t('Width'),
     '#title_display' => 'invisible',
     '#type' => 'number',
-    '#default_value' => $editor->image_upload['max_dimensions']['width'],
+    '#default_value' => (empty($image_upload['max_dimensions']['width'])) ? '' : $image_upload['max_dimensions']['width'],
     '#size' => 8,
     '#maxlength' => 8,
     '#min' => 1,
@@ -117,7 +117,7 @@ function editor_image_upload_settings_form(Editor $editor) {
     '#title' => t('Height'),
     '#title_display' => 'invisible',
     '#type' => 'number',
-    '#default_value' => $editor->image_upload['max_dimensions']['height'],
+    '#default_value' => (empty($image_upload['max_dimensions']['height'])) ? '' : $image_upload['max_dimensions']['height'],
     '#size' => 8,
     '#maxlength' => 8,
     '#min' => 1,

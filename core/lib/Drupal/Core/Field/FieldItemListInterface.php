@@ -7,6 +7,8 @@
 
 namespace Drupal\Core\Field;
 
+use Drupal\Core\Entity\ContentEntityInterface;
+use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Session\AccountInterface;
 use Drupal\Core\Access\AccessibleInterface;
 use Drupal\Core\TypedData\ListInterface;
@@ -61,27 +63,39 @@ interface FieldItemListInterface extends ListInterface, AccessibleInterface {
   public function getFieldDefinition();
 
   /**
+   * Returns the array of field settings.
+   *
+   * @return array
+   *   An array of key/value pairs.
+   */
+  public function getSettings();
+
+  /**
+   * Returns the value of a given field setting.
+   *
+   * @param string $setting_name
+   *   The setting name.
+   *
+   * @return mixed
+   *   The setting value.
+   */
+  public function getSetting($setting_name);
+
+  /**
    * Contains the default access logic of this field.
    *
-   * See \Drupal\Core\Entity\EntityAccessControllerInterface::fieldAccess() for
+   * See \Drupal\Core\Entity\EntityAccessControlHandlerInterface::fieldAccess() for
    * the parameter documentation.
    *
-   * @return bool
-   *   TRUE if access to this field is allowed per default, FALSE otherwise.
+   * @return \Drupal\Core\Access\AccessResultInterface
+   *   The access result.
    */
   public function defaultAccess($operation = 'view', AccountInterface $account = NULL);
 
   /**
    * Filters out empty field items and re-numbers the item deltas.
    */
-  public function filterEmptyValues();
-
-  /**
-   * Gets a property object from the first field item.
-   *
-   * @see \Drupal\Core\Field\FieldItemInterface::get()
-   */
-  public function get($property_name);
+  public function filterEmptyItems();
 
   /**
    * Magic method: Gets a property value of to the first field item.
@@ -110,20 +124,6 @@ interface FieldItemListInterface extends ListInterface, AccessibleInterface {
    * @see \Drupal\Core\Field\FieldItemInterface::__unset()
    */
   public function __unset($property_name);
-
-  /**
-   * Gets the definition of a property of the first field item.
-   *
-   * @see \Drupal\Core\Field\FieldItemInterface::getPropertyDefinition()
-   */
-  public function getPropertyDefinition($name);
-
-  /**
-   * Gets an array of property definitions of the first field item.
-   *
-   * @see \Drupal\Core\Field\FieldItemInterface::getPropertyDefinitions()
-   */
-  public function getPropertyDefinitions();
 
   /**
    * Defines custom presave behavior for field values.
@@ -165,5 +165,103 @@ interface FieldItemListInterface extends ListInterface, AccessibleInterface {
    * called for entity types that support revisioning.
    */
   public function deleteRevision();
+
+  /**
+   * Returns a renderable array for the field items.
+   *
+   * @param array $display_options
+   *   Can be either the name of a view mode, or an array of display settings.
+   *   See EntityViewBuilderInterface::viewField() for more information.
+   *
+   * @return array
+   *   A renderable array for the field values.
+   *
+   * @see \Drupal\Core\Entity\EntityViewBuilderInterface::viewField()
+   * @see \Drupal\Core\Field\FieldItemInterface::view()
+   */
+  public function view($display_options = array());
+
+  /*
+   * Populates a specified number of field items with valid sample data.
+   *
+   * @param int $count
+   *   The number of items to create.
+   */
+  public function generateSampleItems($count = 1);
+
+  /**
+   * Returns a form for the default value input.
+   *
+   * Invoked from \Drupal\field_ui\Form\FieldEditForm to allow
+   * administrators to configure instance-level default value.
+   *
+   * @param array $form
+   *   The form where the settings form is being included in.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The form state of the (entire) configuration form.
+   *
+   * @return array
+   *   The form definition for the field default value.
+   */
+  public function defaultValuesForm(array &$form, FormStateInterface $form_state);
+
+  /**
+   * Validates the submitted default value.
+   *
+   * Invoked from \Drupal\field_ui\Form\FieldEditForm to allow
+   * administrators to configure instance-level default value.
+   *
+   * @param array $element
+   *   The default value form element.
+   * @param array $form
+   *   The form where the settings form is being included in.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The form state of the (entire) configuration form.
+   */
+  public function defaultValuesFormValidate(array $element, array &$form, FormStateInterface $form_state);
+
+  /**
+   * Processes the submitted default value.
+   *
+   * Invoked from \Drupal\field_ui\Form\FieldEditForm to allow
+   * administrators to configure instance-level default value.
+   *
+   * @param array $element
+   *   The default value form element.
+   * @param array $form
+   *   The form where the settings form is being included in.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The form state of the (entire) configuration form.
+   *
+   * @return array
+   *   The field default value.
+   */
+  public function defaultValuesFormSubmit(array $element, array &$form, FormStateInterface $form_state);
+
+  /**
+   * Processes the default value before being applied.
+   *
+   * Defined or configured default values of a field might need some processing
+   * in order to be a valid value for the field type; e.g., a date field could
+   * process the defined value of 'NOW' to a valid date.
+   *
+   * @param mixed
+   *   The default value as defined for the field.
+   * @param \Drupal\Core\Entity\ContentEntityInterface $entity
+   *   The entity for which the default value is generated.
+   * @param \Drupal\Core\Field\FieldDefinitionInterface $definition
+   *   The definition of the field.
+   *
+   * @return mixed
+   *   The default value for the field, as accepted by
+   *   \Drupal\field\Plugin\Core\Entity\FieldItemListInterface::setValue(). This
+   *   can be either:
+   *   - a literal, in which case it will be assigned to the first property of
+   *     the first item.
+   *   - a numerically indexed array of items, each item being a property/value
+   *     array.
+   *   - NULL or array() for no default value.
+   */
+  public static function processDefaultValue($default_value, ContentEntityInterface $entity, FieldDefinitionInterface $definition);
 
 }

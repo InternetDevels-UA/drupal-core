@@ -7,16 +7,20 @@
 
 namespace Drupal\Component\Annotation\Plugin\Discovery;
 
+use Drupal\Component\Annotation\AnnotationInterface;
 use Drupal\Component\Plugin\Discovery\DiscoveryInterface;
 use Drupal\Component\Annotation\Reflection\MockFileFinder;
 use Doctrine\Common\Annotations\SimpleAnnotationReader;
 use Doctrine\Common\Annotations\AnnotationRegistry;
 use Doctrine\Common\Reflection\StaticReflectionParser;
+use Drupal\Component\Plugin\Discovery\DiscoveryTrait;
 
 /**
  * Defines a discovery mechanism to find annotated plugins in PSR-0 namespaces.
  */
 class AnnotatedClassDiscovery implements DiscoveryInterface {
+
+  use DiscoveryTrait;
 
   /**
    * The namespaces within which to find plugin classes.
@@ -75,14 +79,6 @@ class AnnotatedClassDiscovery implements DiscoveryInterface {
   }
 
   /**
-   * Implements Drupal\Component\Plugin\Discovery\DiscoveryInterface::getDefinition().
-   */
-  public function getDefinition($plugin_id) {
-    $plugins = $this->getDefinitions();
-    return isset($plugins[$plugin_id]) ? $plugins[$plugin_id] : NULL;
-  }
-
-  /**
    * Implements Drupal\Component\Plugin\Discovery\DiscoveryInterface::getDefinitions().
    */
   public function getDefinitions() {
@@ -98,12 +94,15 @@ class AnnotatedClassDiscovery implements DiscoveryInterface {
     // Search for classes within all PSR-0 namespace locations.
     foreach ($this->getPluginNamespaces() as $namespace => $dirs) {
       foreach ($dirs as $dir) {
-        $dir .= DIRECTORY_SEPARATOR . str_replace('\\', DIRECTORY_SEPARATOR, $namespace);
         if (file_exists($dir)) {
-          foreach (new \DirectoryIterator($dir) as $fileinfo) {
-            // @todo Once core requires 5.3.6, use $fileinfo->getExtension().
-            if (pathinfo($fileinfo->getFilename(), PATHINFO_EXTENSION) == 'php') {
-              $class = $namespace . '\\' . $fileinfo->getBasename('.php');
+          $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS)
+          );
+          foreach ($iterator as $fileinfo) {
+            if ($fileinfo->getExtension() == 'php') {
+              $sub_path = $iterator->getSubIterator()->getSubPath();
+              $sub_path = $sub_path ? str_replace(DIRECTORY_SEPARATOR, '\\', $sub_path) . '\\' : '';
+              $class = $namespace . '\\' . $sub_path . $fileinfo->getBasename('.php');
 
               // The filename is already known, so there is no need to find the
               // file. However, StaticReflectionParser needs a finder, so use a
@@ -111,12 +110,12 @@ class AnnotatedClassDiscovery implements DiscoveryInterface {
               $finder = MockFileFinder::create($fileinfo->getPathName());
               $parser = new StaticReflectionParser($class, $finder, TRUE);
 
+              /** @var $annotation \Drupal\Component\Annotation\AnnotationInterface */
               if ($annotation = $reader->getClassAnnotation($parser->getReflectionClass(), $this->pluginDefinitionAnnotationName)) {
+                $this->prepareAnnotationDefinition($annotation, $class);
                 // AnnotationInterface::get() returns the array definition
                 // instead of requiring us to work with the annotation object.
-                $definition = $annotation->get();
-                $definition['class'] = $class;
-                $definitions[$definition['id']] = $definition;
+                $definitions[$annotation->getId()] = $annotation->get();
               }
             }
           }
@@ -128,6 +127,18 @@ class AnnotatedClassDiscovery implements DiscoveryInterface {
     AnnotationRegistry::reset();
 
     return $definitions;
+  }
+
+  /**
+   * Prepares the annotation definition.
+   *
+   * @param \Drupal\Component\Annotation\AnnotationInterface $annotation
+   *   The annotation derived from the plugin.
+   * @param string $class
+   *   The class used for the plugin.
+   */
+  protected function prepareAnnotationDefinition(AnnotationInterface $annotation, $class) {
+    $annotation->setClass($class);
   }
 
   /**

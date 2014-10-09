@@ -7,7 +7,8 @@
 
 namespace Drupal\Core\Field;
 
-use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Entity\ContentEntityInterface;
+use Drupal\Core\TypedData\ListDataDefinitionInterface;
 
 /**
  * Defines an interface for entity field definitions.
@@ -26,20 +27,20 @@ use Drupal\Core\Entity\EntityInterface;
  * It is up to the class implementing this interface to manage where the
  * information comes from. For example, field.module provides an implementation
  * based on two levels of configuration. It allows the site administrator to add
- * custom fields to any entity type and bundle via the "field_entity" and
- * "field_instance" configuration entities. The former for storing configuration
- * that is independent of which entity type and bundle the field is added to,
- * and the latter for storing configuration that is specific to the entity type
- * and bundle. The class that implements "field_instance" configuration entities
- * also implements this interface, returning information from either itself, or
- * from the corresponding "field_entity" configuration, as appropriate.
+ * custom fields to any entity type and bundle via the "field_storage_config"
+ * and "field_config" configuration entities. The former for storing
+ * configuration that is independent of which entity type and bundle the field
+ * is added to, and the latter for storing configuration that is specific to the
+ * entity type and bundle. The class that implements "field_config"
+ * configuration entities also implements this interface, returning information
+ * from either itself, or from the corresponding "field_storage_config"
+ * configuration, as appropriate.
  *
  * However, entity base fields, such as $node->title, are not managed by
- * field.module and its "field_entity"/"field_instance" configuration entities.
- * Therefore, their definitions are provided by different objects that implement
- * this interface.
- * @todo That is still in progress: https://drupal.org/node/1949932. Update this
- *   documentation with details when that's implemented.
+ * field.module and its "field_storage_config"/"field_config"
+ * configuration entities. Therefore, their definitions are provided by
+ * different objects based on the class \Drupal\Core\Field\BaseFieldDefinition,
+ * which implements this interface as well.
  *
  * Field definitions may fully define a concrete data object (e.g.,
  * $node_1->body), or may provide a best-guess definition for a data object that
@@ -51,12 +52,7 @@ use Drupal\Core\Entity\EntityInterface;
  * based on that abstract definition, even though that abstract definition can
  * differ from the concrete definition of any particular node's body field.
  */
-interface FieldDefinitionInterface {
-
-  /**
-   * Value indicating a field accepts an unlimited number of values.
-   */
-  const CARDINALITY_UNLIMITED = -1;
+interface FieldDefinitionInterface extends ListDataDefinitionInterface {
 
   /**
    * Returns the machine name of the field.
@@ -67,7 +63,7 @@ interface FieldDefinitionInterface {
    * @return string
    *   The field name.
    */
-  public function getFieldName();
+  public function getName();
 
   /**
    * Returns the field type.
@@ -75,94 +71,82 @@ interface FieldDefinitionInterface {
    * @return string
    *   The field type, i.e. the id of a field type plugin. For example 'text'.
    *
-   * @see \Drupal\Core\Field\FieldTypePluginManager
+   * @see \Drupal\Core\Field\FieldTypePluginManagerInterface
    */
-  public function getFieldType();
+  public function getType();
 
   /**
-   * Returns the field settings.
+   * Returns the ID of the entity type the field is attached to.
    *
-   * Each field type defines the settings that are meaningful for that type.
-   * For example, a text field can define a 'max_length' setting, and an image
-   * field can define a 'alt_field_required' setting.
-   *
-   * @return array
-   *   An array of key/value pairs.
-   */
-  public function getFieldSettings();
-
-  /**
-   * Returns the value of a given field setting.
-   *
-   * @param string $setting_name
-   *   The setting name.
-   *
-   * @return mixed
-   *   The setting value.
-   */
-  public function getFieldSetting($setting_name);
-
-  /**
-   * Returns the names of the field's subproperties.
-   *
-   * A field is a list of items, and each item can contain one or more
-   * properties. All items for a given field contain the same property names,
-   * but the values can be different for each item.
-   *
-   * For example, an email field might just contain a single 'value' property,
-   * while a link field might contain 'title' and 'url' properties, and a text
-   * field might contain 'value', 'summary', and 'format' properties.
-   *
-   * @return array
-   *   The property names.
-   */
-  public function getFieldPropertyNames();
-
-  /**
-   * Returns whether the field is translatable.
-   *
-   * @return bool
-   *   TRUE if the field is translatable.
-   */
-  public function isFieldTranslatable();
-
-  /**
-   * Determines whether the field is configurable via field.module.
-   *
-   * @return bool
-   */
-  public function isFieldConfigurable();
-
-  /**
-   * Returns the human-readable label for the field.
+   * This method should not be confused with EntityInterface::entityType()
+   * (configurable fields are config entities, and thus implement both
+   * interfaces):
+   *   - FieldDefinitionInterface::getTargetEntityTypeId() answers "as a field,
+   *     which entity type are you attached to?".
+   *   - EntityInterface::getEntityTypeId() answers "as a (config) entity, what
+   *     is your own entity type?".
    *
    * @return string
-   *   The field label.
+   *   The entity type ID.
    */
-  public function getFieldLabel();
+  public function getTargetEntityTypeId();
 
   /**
-   * Returns the human-readable description for the field.
+   * Gets the bundle the field is defined for.
    *
-   * This is displayed in addition to the label in places where additional
-   * descriptive information is helpful. For example, as help text below the
-   * form element in entity edit forms.
-   *
-   * @return string
-   *   The field description.
+   * @return string|null
+   *   The bundle the field is defined for, or NULL if it is a base field; i.e.,
+   *   it is not bundle-specific.
    */
-  public function getFieldDescription();
+  public function getTargetBundle();
 
   /**
-   * Returns the maximum number of items allowed for the field.
+   * Returns whether the display for the field can be configured.
    *
-   * Possible values are positive integers or
-   * FieldDefinitionInterface::CARDINALITY_UNLIMITED.
+   * @param string $display_context
+   *   The display context. Either 'view' or 'form'.
    *
-   * @return integer
-   *   The field cardinality.
+   * @return bool
+   *   TRUE if the display for this field is configurable in the given context.
+   *   If TRUE, the display options returned by getDisplayOptions() may be
+   *   overridden via the respective entity display.
+   *
+   * @see \Drupal\Core\Entity\Display\EntityDisplayInterface
    */
-  public function getFieldCardinality();
+  public function isDisplayConfigurable($display_context);
+
+  /**
+   * Returns the default display options for the field.
+   *
+   * If the field's display is configurable, the returned display options act
+   * as default values and may be overridden via the respective entity display.
+   * Otherwise, the display options will be applied to entity displays as is.
+   *
+   * @param string $display_context
+   *   The display context. Either 'view' or 'form'.
+   *
+   * @return array|null
+   *   The array of display options for the field, or NULL if the field is not
+   *   displayed. The following key/value pairs may be present:
+   *   - label: (string) Position of the field label. The default 'field' theme
+   *     implementation supports the values 'inline', 'above' and 'hidden'.
+   *     Defaults to 'above'. Only applies to 'view' context.
+   *   - type: (string) The plugin (widget or formatter depending on
+   *     $display_context) to use, or 'hidden'. If not specified or if the
+   *     requested plugin is unknown, the 'default_widget' / 'default_formatter'
+   *     for the field type will be used.
+   *   - settings: (array) Settings for the plugin specified above. The default
+   *     settings for the plugin will be used for settings left unspecified.
+   *   - third_party_settings: (array) Settings provided by other extensions
+   *     through hook_field_formatter_third_party_settings_form().
+   *   - weight: (float) The weight of the element. Not needed if 'type' is
+   *     'hidden'.
+   *   The defaults of the various display options above get applied by the used
+   *   entity display.
+   *
+   * @see \Drupal\Core\Entity\Display\EntityDisplayInterface
+   */
+  public function getDisplayOptions($display_context);
 
   /**
    * Returns whether at least one non-empty item is required for this field.
@@ -173,31 +157,56 @@ interface FieldDefinitionInterface {
    * @return bool
    *   TRUE if the field is required.
    */
-  public function isFieldRequired();
-
-  /**
-   * Returns whether the field can contain multiple items.
-   *
-   * @return bool
-   *   TRUE if the field can contain multiple items, FALSE otherwise.
-   */
-  public function isFieldMultiple();
+  public function isRequired();
 
   /**
    * Returns the default value for the field in a newly created entity.
    *
-   * @param \Drupal\Core\Entity\EntityInterface $entity
-   *   The entity being created.
+   * @param \Drupal\Core\Entity\ContentEntityInterface $entity
+   *   The entity for which the default value is generated.
    *
    * @return mixed
    *   The default value for the field, as accepted by
-   *   Drupal\field\Plugin\Core\Entity\Field::setValue(). This can be either:
+   *   \Drupal\field\Plugin\Core\Entity\FieldItemListInterface::setValue(). This
+   *   can be either:
    *   - a literal, in which case it will be assigned to the first property of
    *     the first item.
    *   - a numerically indexed array of items, each item being a property/value
    *     array.
    *   - NULL or array() for no default value.
    */
-  public function getFieldDefaultValue(EntityInterface $entity);
+  public function getDefaultValue(ContentEntityInterface $entity);
+
+  /**
+   * Returns whether the field is translatable.
+   *
+   * @return bool
+   *   TRUE if the field is translatable.
+   */
+  public function isTranslatable();
+
+  /**
+   * Returns the field storage definition.
+   *
+   * @return \Drupal\Core\Field\FieldStorageDefinitionInterface
+   *   The field storage definition.
+   */
+  public function getFieldStorageDefinition();
+
+  /**
+   * Gets an object that can be saved in configuration.
+   *
+   * Base fields are defined in code. In order to configure field definition
+   * properties per bundle use this method to create an override that can be
+   * saved in configuration.
+   *
+   * @see \Drupal\Core\Field\Entity\BaseFieldBundleOverride
+   *
+   * @param string $bundle
+   *   The bundle to get the configurable field for.
+   *
+   * @return \Drupal\Core\Field\FieldConfigInterface
+   */
+  public function getConfig($bundle);
 
 }

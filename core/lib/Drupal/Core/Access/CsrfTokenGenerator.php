@@ -9,7 +9,8 @@ namespace Drupal\Core\Access;
 
 use Drupal\Component\Utility\Crypt;
 use Drupal\Core\PrivateKey;
-use Symfony\Component\HttpFoundation\Request;
+use Drupal\Core\Session\MetadataBag;
+use Drupal\Core\Site\Settings;
 
 /**
  * Generates and validates CSRF tokens.
@@ -26,47 +27,52 @@ class CsrfTokenGenerator {
   protected $privateKey;
 
   /**
-   * The current request object.
+   * The session metadata bag.
    *
-   * @var \Symfony\Component\HttpFoundation\Request
+   * @var \Drupal\Core\Session\MetadataBag
    */
-  protected $request;
+  protected $sessionMetadata;
 
   /**
    * Constructs the token generator.
    *
    * @param \Drupal\Core\PrivateKey $private_key
    *   The private key service.
+   * @param \Drupal\Core\Session\MetadataBag $session_metadata
+   *   The session metadata bag.
    */
-  public function __construct(PrivateKey $private_key) {
+  public function __construct(PrivateKey $private_key, MetadataBag $session_metadata) {
     $this->privateKey = $private_key;
-  }
-
-  /**
-   * Sets the $request property.
-   *
-   * @param \Symfony\Component\HttpFoundation\Request $request
-   *   The HttpRequest object representing the current request.
-   */
-  public function setRequest(Request $request) {
-    $this->request = $request;
+    $this->sessionMetadata = $session_metadata;
   }
 
   /**
    * Generates a token based on $value, the user session, and the private key.
    *
+   * The generated token is based on the session of the current user. Normally,
+   * anonymous users do not have a session, so the generated token will be
+   * different on every page request. To generate a token for users without a
+   * session, manually start a session prior to calling this function.
+   *
    * @param string $value
    *   (optional) An additional value to base the token on.
    *
    * @return string
-   *   A 43-character URL-safe token for validation, based on the user session
-   *   ID, the hash salt provided by drupal_get_hash_salt(), and the
+   *   A 43-character URL-safe token for validation, based on the token seed,
+   *   the hash salt provided by Settings::getHashSalt(), and the
    *   'drupal_private_key' configuration variable.
    *
-   * @see drupal_get_hash_salt()
+   * @see \Drupal\Core\Site\Settings::getHashSalt()
+   * @see \Drupal\Core\Session\SessionManager::start()
    */
   public function get($value = '') {
-    return Crypt::hmacBase64($value, session_id() . $this->privateKey->get() . drupal_get_hash_salt());
+    $seed = $this->sessionMetadata->getCsrfTokenSeed();
+    if (empty($seed)) {
+      $seed = Crypt::randomBytesBase64();
+      $this->sessionMetadata->setCsrfTokenSeed($seed);
+    }
+
+    return $this->computeToken($seed, $value);
   }
 
   /**
@@ -76,17 +82,36 @@ class CsrfTokenGenerator {
    *   The token to be validated.
    * @param string $value
    *   (optional) An additional value to base the token on.
-   * @param bool $skip_anonymous
-   *   (optional) Set to TRUE to skip token validation for anonymous users.
    *
    * @return bool
-   *   TRUE for a valid token, FALSE for an invalid token. When $skip_anonymous
-   *   is TRUE, the return value will always be TRUE for anonymous users.
+   *   TRUE for a valid token, FALSE for an invalid token.
    */
-  public function validate($token, $value = '', $skip_anonymous = FALSE) {
-    $user = $this->request->attributes->get('_account');
+  public function validate($token, $value = '') {
+    $seed = $this->sessionMetadata->getCsrfTokenSeed();
+    if (empty($seed)) {
+      return FALSE;
+    }
 
-    return ($skip_anonymous && $user->isAnonymous()) || ($token == $this->get($value));
+    return $token === $this->computeToken($seed, $value);
+  }
+
+  /**
+   * Generates a token based on $value, the token seed, and the private key.
+   *
+   * @param string $seed
+   *   The per-session token seed.
+   * @param string $value
+   *   (optional) An additional value to base the token on.
+   *
+   * @return string
+   *   A 43-character URL-safe token for validation, based on the token seed,
+   *   the hash salt provided by Settings::getHashSalt(), and the
+   *   'drupal_private_key' configuration variable.
+   *
+   * @see \Drupal\Core\Site\Settings::getHashSalt()
+   */
+  protected function computeToken($seed, $value = '') {
+    return Crypt::hmacBase64($value, $seed . $this->privateKey->get() . Settings::getHashSalt());
   }
 
 }

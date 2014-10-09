@@ -6,13 +6,13 @@
  */
 
 namespace Drupal\Core\KeyValueStore;
-use Drupal\Component\Utility\Settings;
+
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
  * Defines the key/value store factory.
  */
-class KeyValueFactory {
+class KeyValueFactory implements KeyValueFactoryInterface {
 
   /**
    * The specific setting name prefix.
@@ -28,7 +28,7 @@ class KeyValueFactory {
    * This is a setting name that will be used if the specific setting does not
    * exist. The setting value will be the id of a service.
    */
-  const DEFAULT_SETTING = 'keyvalue_default';
+  const DEFAULT_SETTING = 'default';
 
   /**
    * The default service id.
@@ -50,42 +50,31 @@ class KeyValueFactory {
   protected $container;
 
   /**
-   * The read-only settings container.
-   *
-   * @var \Drupal\Component\Utility\Settings
-   */
-  protected $settings;
-
-  /**
    * @param \Symfony\Component\DependencyInjection\ContainerInterface $container
    *   The service container.
-   * @param \Drupal\Component\Utility\Settings $settings
-   *  The read-only settings container.
+   * @param array $options
+   *   (optional) Collection-specific storage override options.
    */
-  function __construct(ContainerInterface $container, Settings $settings) {
+  function __construct(ContainerInterface $container, array $options = array()) {
     $this->container = $container;
-    $this->settings = $settings;
+    $this->options = $options;
   }
 
   /**
-   * Constructs a new key/value store for a given collection name.
-   *
-   * @param string $collection
-   *   The name of the collection holding key and value pairs.
-   *
-   * @return \Drupal\Core\KeyValueStore\KeyValueStoreInterface
-   *   A key/value store implementation for the given $collection.
+   * {@inheritdoc}
    */
   public function get($collection) {
     if (!isset($this->stores[$collection])) {
-      if ($service_name = $this->settings->get(static::SPECIFIC_PREFIX . $collection)) {
+      if (isset($this->options[$collection])) {
+        $service_id = $this->options[$collection];
       }
-      elseif ($service_name = $this->settings->get(static::DEFAULT_SETTING)) {
+      elseif (isset($this->options[static::DEFAULT_SETTING])) {
+        $service_id = $this->options[static::DEFAULT_SETTING];
       }
       else {
-        $service_name = static::DEFAULT_SERVICE;
+        $service_id = static::DEFAULT_SERVICE;
       }
-      $this->stores[$collection] = $this->container->get($service_name)->get($collection);
+      $this->stores[$collection] = $this->container->get($service_id)->get($collection);
     }
     return $this->stores[$collection];
   }

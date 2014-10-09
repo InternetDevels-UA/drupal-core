@@ -422,10 +422,10 @@ db_insert('variable')->fields(array(
 
 // Add sample nodes to test language assignment and translation functionality.
 // The first node is also used for testing comment language functionality. This
-// is a simple node with Language::LANGCODE_NOT_SPECIFIED as language code. The second
-// node is a Catalan node (language code 'ca'). The third and fourth node are a
-// translation set with an English source translation (language code 'en') and
-// a Chuvash translation (language code 'cv').
+// is a simple node with LanguageInterface::LANGCODE_NOT_SPECIFIED as language
+// code. The second node is a Catalan node (language code 'ca'). The third and
+// fourth node are a translation set with an English source translation
+// (language code 'en') and a Chuvash translation (language code 'cv').
 db_insert('node')->fields(array(
   'nid',
   'vid',
@@ -545,7 +545,7 @@ db_insert('node_revision')->fields(array(
   'vid' => '70',
   'uid' => '6',
   'title' => 'Node title 50',
-  'log' => 'Added a Language::LANGCODE_NOT_SPECIFIED node to comment on.',
+  'log' => 'Added a LanguageInterface::LANGCODE_NOT_SPECIFIED node to comment on.',
   'timestamp' => '1314997642',
   'status' => '1',
   'comment' => '2',
@@ -776,7 +776,8 @@ db_insert('file_managed')->fields(array(
   'filemime',
   'filesize',
   'status',
-  'timestamp'
+  'created',
+  'changed',
 ))
 ->values(array(
   'fid' => '1',
@@ -786,6 +787,7 @@ db_insert('file_managed')->fields(array(
   'filemime' => 'text/plain',
   'filesize' => 0,
   'status' => 1,
-  'timestamp' => '1314997642',
+  'created' => '1314997642',
+  'changed' => '1314997642',
 ))
 ->execute();

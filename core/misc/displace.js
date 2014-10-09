@@ -1,5 +1,8 @@
 /**
  * Manages elements that can offset the size of the viewport.
+ *
+ * Measures and reports viewport offset dimensions from elements like the
+ * toolbar that can potentially displace the positioning of other elements.
  */
 (function ($, Drupal, debounce) {
 
@@ -13,14 +16,10 @@
   };
 
   /**
-   * Registers a resize hanlder on the window.
+   * Registers a resize handler on the window.
    */
   Drupal.behaviors.drupalDisplace = {
     attach: function () {
-      // Do not process the window of the overlay.
-      if (parent.Drupal.overlay && parent.Drupal.overlay.iframeWindow === window) {
-        return;
-      }
       // Mark this behavior as processed on the first pass.
       if (this.displaceProcessed) {
         return;
@@ -43,7 +42,7 @@
    *   and left. The value of each key is the viewport displacement distance for
    *   that edge.
    */
-  function displace (broadcast) {
+  function displace(broadcast) {
     offsets = Drupal.displace.offsets = calculateOffsets();
     if (typeof broadcast === 'undefined' || broadcast) {
       $(document).trigger('drupalViewportOffsetChange', offsets);
@@ -59,7 +58,7 @@
    *   and left. The value of each key is the viewport displacement distance for
    *   that edge.
    */
-  function calculateOffsets () {
+  function calculateOffsets() {
     return {
       top: calculateOffset('top'),
       right: calculateOffset('right'),
@@ -83,12 +82,12 @@
    * @return {number}
    *   The viewport displacement distance for the requested edge.
    */
-  function calculateOffset (edge) {
+  function calculateOffset(edge) {
     var edgeOffset = 0;
     var displacingElements = document.querySelectorAll('[data-offset-' + edge + ']');
     for (var i = 0, n = displacingElements.length; i < n; i++) {
       var el = displacingElements[i];
-      // If the element is not visble, do consider its dimensions.
+      // If the element is not visible, do consider its dimensions.
       if (el.style.display === 'none') {
         continue;
       }
@@ -98,7 +97,7 @@
       // but is not a valid number then get the displacement
       // dimensions directly from the element.
       if (isNaN(displacement)) {
-          displacement = getRawOffset(el, edge);
+        displacement = getRawOffset(el, edge);
       }
       // If the displacement value is larger than the current value for this
       // edge, use the displacement value.
@@ -121,7 +120,7 @@
    * @return {number}
    *   The viewport displacement distance for the requested edge.
    */
-  function getRawOffset (el, edge) {
+  function getRawOffset(el, edge) {
     var $el = $(el);
     var documentElement = document.documentElement;
     var displacement = 0;
@@ -136,12 +135,12 @@
       // Left and top elements displace as a sum of their own offset value
       // plus their size.
       case 'top':
-        // Total displacment is the sum of the elements placement and size.
+        // Total displacement is the sum of the elements placement and size.
         displacement = placement + $el.outerHeight();
         break;
 
       case 'left':
-        // Total displacment is the sum of the elements placement and size.
+        // Total displacement is the sum of the elements placement and size.
         displacement = placement + $el.outerWidth();
         break;
 

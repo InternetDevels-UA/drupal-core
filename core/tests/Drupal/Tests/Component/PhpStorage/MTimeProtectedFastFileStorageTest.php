@@ -2,15 +2,17 @@
 
 /**
  * @file
- * Definition of Drupal\Tests\Component\PhpStorage\MTimeProtectedFileStorageTest.
+ * Contains \Drupal\Tests\Component\PhpStorage\MTimeProtectedFastFileStorageTest.
  */
 
 namespace Drupal\Tests\Component\PhpStorage;
 
 /**
- * Tests the directory mtime based PHP loader implementation.
+ * Tests the MTimeProtectedFastFileStorage implementation.
+ *
+ * @group PhpStorage
  */
-class MTimeProtectedFastFileStorageTest extends MTimeProtectedFileStorageTest {
+class MTimeProtectedFastFileStorageTest extends MTimeProtectedFileStorageBase {
 
   /**
    * The expected test results for the security test.
@@ -22,15 +24,8 @@ class MTimeProtectedFastFileStorageTest extends MTimeProtectedFileStorageTest {
   protected $expected = array(TRUE, FALSE);
 
   /**
-   * Test this class.
+   * The PHP storage class to test.
    */
   protected $storageClass = 'Drupal\Component\PhpStorage\MTimeProtectedFastFileStorage';
 
-  public static function getInfo() {
-    return array(
-      'name' => 'MTime protected fast file storage',
-      'description' => 'Tests the MTimeProtectedFastFileStorage implementation.',
-      'group' => 'PHP Storage',
-    );
-  }
 }

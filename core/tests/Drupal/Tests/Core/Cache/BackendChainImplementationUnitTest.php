@@ -7,25 +7,17 @@
 
 namespace Drupal\Tests\Core\Cache;
 
-use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Cache\BackendChain;
+use Drupal\Core\Cache\Cache;
 use Drupal\Core\Cache\MemoryBackend;
 use Drupal\Tests\UnitTestCase;
 
 /**
- * Tests implementation-specific functionality of the BackendChain backend.
+ * Unit test of backend chain implementation specifics.
  *
  * @group Cache
  */
 class BackendChainImplementationUnitTest extends UnitTestCase {
-
-  public static function getInfo() {
-    return array(
-      'name' => 'Backend chain implementation',
-      'description' => 'Unit test of backend chain implementation specifics.',
-      'group' => 'Cache'
-    );
-  }
 
   /**
    * Chain that will be heavily tested.
@@ -55,7 +47,7 @@ class BackendChainImplementationUnitTest extends UnitTestCase {
    */
   protected $thirdBackend;
 
-  public function setUp() {
+  protected function setUp() {
     parent::setUp();
 
     // Set up three memory backends to be used in the chain.
@@ -204,31 +196,20 @@ class BackendChainImplementationUnitTest extends UnitTestCase {
   }
 
   /**
-   * Test that the chain is not empty when at least one backend has data.
-   */
-  public function testNotEmptyIfOneBackendHasTheKey() {
-    $this->assertFalse($this->chain->isEmpty(), 'Chain is not empty');
-
-    // This is the only test that needs to start with an empty chain.
-    $this->chain->deleteAll();
-    $this->assertTrue($this->chain->isEmpty(), 'Chain have been emptied by the deleteAll() call');
-
-    $this->secondBackend->set('test', 5);
-    $this->assertFalse($this->chain->isEmpty(), 'Chain is not empty anymore now that the second backend has something');
-  }
-
-  /**
    * Test that the delete all operation is propagated to all backends in the chain.
    */
   public function testDeleteAllPropagation() {
     // Set both expiring and permanent keys.
-    $this->chain->set('test1', 1, CacheBackendInterface::CACHE_PERMANENT);
+    $this->chain->set('test1', 1, Cache::PERMANENT);
     $this->chain->set('test2', 3, time() + 1000);
     $this->chain->deleteAll();
 
-    $this->assertTrue($this->firstBackend->isEmpty(), 'First backend is empty after delete all.');
-    $this->assertTrue($this->secondBackend->isEmpty(), 'Second backend is empty after delete all.');
-    $this->assertTrue($this->thirdBackend->isEmpty(), 'Third backend is empty after delete all.');
+    $this->assertFalse($this->firstBackend->get('test1'), 'First key has been deleted in first backend.');
+    $this->assertFalse($this->firstBackend->get('test2'), 'Second key has been deleted in first backend.');
+    $this->assertFalse($this->secondBackend->get('test1'), 'First key has been deleted in second backend.');
+    $this->assertFalse($this->secondBackend->get('test2'), 'Second key has been deleted in second backend.');
+    $this->assertFalse($this->thirdBackend->get('test1'), 'First key has been deleted in third backend.');
+    $this->assertFalse($this->thirdBackend->get('test2'), 'Second key has been deleted in third backend.');
   }
 
   /**
@@ -237,8 +218,8 @@ class BackendChainImplementationUnitTest extends UnitTestCase {
    */
   public function testDeleteTagsPropagation() {
     // Create two cache entries with the same tag and tag value.
-    $this->chain->set('test_cid_clear1', 'foo', CacheBackendInterface::CACHE_PERMANENT, array('test_tag' => 2));
-    $this->chain->set('test_cid_clear2', 'foo', CacheBackendInterface::CACHE_PERMANENT, array('test_tag' => 2));
+    $this->chain->set('test_cid_clear1', 'foo', Cache::PERMANENT, array('test_tag:2'));
+    $this->chain->set('test_cid_clear2', 'foo', Cache::PERMANENT, array('test_tag:2'));
     $this->assertNotSame(FALSE, $this->firstBackend->get('test_cid_clear1')
       && $this->firstBackend->get('test_cid_clear2')
       && $this->secondBackend->get('test_cid_clear1')
@@ -248,7 +229,7 @@ class BackendChainImplementationUnitTest extends UnitTestCase {
       'Two cache items were created in all backends.');
 
     // Invalidate test_tag of value 1. This should invalidate both entries.
-    $this->chain->deleteTags(array('test_tag' => 2));
+    $this->chain->deleteTags(array('test_tag:2'));
     $this->assertSame(FALSE, $this->firstBackend->get('test_cid_clear1')
       && $this->firstBackend->get('test_cid_clear2')
       && $this->secondBackend->get('test_cid_clear1')
@@ -258,8 +239,8 @@ class BackendChainImplementationUnitTest extends UnitTestCase {
       'Two caches removed from all backends after clearing a cache tag.');
 
     // Create two cache entries with the same tag and an array tag value.
-    $this->chain->set('test_cid_clear1', 'foo', CacheBackendInterface::CACHE_PERMANENT, array('test_tag' => array(1)));
-    $this->chain->set('test_cid_clear2', 'foo', CacheBackendInterface::CACHE_PERMANENT, array('test_tag' => array(1)));
+    $this->chain->set('test_cid_clear1', 'foo', Cache::PERMANENT, array('test_tag:1'));
+    $this->chain->set('test_cid_clear2', 'foo', Cache::PERMANENT, array('test_tag:1'));
     $this->assertNotSame(FALSE, $this->firstBackend->get('test_cid_clear1')
       && $this->firstBackend->get('test_cid_clear2')
       && $this->secondBackend->get('test_cid_clear1')
@@ -269,7 +250,7 @@ class BackendChainImplementationUnitTest extends UnitTestCase {
       'Two cache items were created in all backends.');
 
     // Invalidate test_tag of value 1. This should invalidate both entries.
-    $this->chain->deleteTags(array('test_tag' => array(1)));
+    $this->chain->deleteTags(array('test_tag:1'));
     $this->assertSame(FALSE, $this->firstBackend->get('test_cid_clear1')
       && $this->firstBackend->get('test_cid_clear2')
       && $this->secondBackend->get('test_cid_clear1')
@@ -279,9 +260,9 @@ class BackendChainImplementationUnitTest extends UnitTestCase {
       'Two caches removed from all backends after clearing a cache tag.');
 
     // Create three cache entries with a mix of tags and tag values.
-    $this->chain->set('test_cid_clear1', 'foo', CacheBackendInterface::CACHE_PERMANENT, array('test_tag' => array(1)));
-    $this->chain->set('test_cid_clear2', 'foo', CacheBackendInterface::CACHE_PERMANENT, array('test_tag' => array(2)));
-    $this->chain->set('test_cid_clear3', 'foo', CacheBackendInterface::CACHE_PERMANENT, array('test_tag_foo' => array(3)));
+    $this->chain->set('test_cid_clear1', 'foo', Cache::PERMANENT, array('test_tag:1'));
+    $this->chain->set('test_cid_clear2', 'foo', Cache::PERMANENT, array('test_tag:2'));
+    $this->chain->set('test_cid_clear3', 'foo', Cache::PERMANENT, array('test_tag_foo:3'));
     $this->assertNotSame(FALSE, $this->firstBackend->get('test_cid_clear1')
       && $this->firstBackend->get('test_cid_clear2')
       && $this->firstBackend->get('test_cid_clear3')
@@ -293,7 +274,7 @@ class BackendChainImplementationUnitTest extends UnitTestCase {
       && $this->thirdBackend->get('test_cid_clear3'),
       'Three cached items were created in all backends.');
 
-    $this->chain->deleteTags(array('test_tag_foo' => array(3)));
+    $this->chain->deleteTags(array('test_tag_foo:3'));
     $this->assertNotSame(FALSE, $this->firstBackend->get('test_cid_clear1')
       && $this->firstBackend->get('test_cid_clear2')
       && $this->secondBackend->get('test_cid_clear1')
@@ -306,5 +287,19 @@ class BackendChainImplementationUnitTest extends UnitTestCase {
       && $this->secondBackend->get('test_cid_clear3')
       && $this->thirdBackend->get('test_cid_clear3'),
       'Cached item matching the tag was removed from all backends.');
+  }
+
+  /**
+   * Test that removing bin propagates to all backends.
+   */
+  public function testRemoveBin() {
+    $chain = new BackendChain('foo');
+    for ($i = 0; $i < 3; $i++) {
+      $backend = $this->getMock('Drupal\Core\Cache\CacheBackendInterface');
+      $backend->expects($this->once())->method('removeBin');
+      $chain->appendBackend($backend);
+    }
+
+    $chain->removeBin();
   }
 }

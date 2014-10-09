@@ -5,7 +5,7 @@
  * Contains \Drupal\Tests\Core\Ajax\AjaxCommandsTest.
  */
 
-namespace Drupal\Tests\Core\Ajax {
+namespace Drupal\Tests\Core\Ajax;
 
 use Drupal\Tests\UnitTestCase;
 use Drupal\Core\Ajax\AddCssCommand;
@@ -33,20 +33,11 @@ use Drupal\Core\Ajax\SetDialogTitleCommand;
 use Drupal\Core\Ajax\RedirectCommand;
 
 /**
- * Tests for all AJAX Commands.
+ * Tests that each AJAX command object can be created and rendered.
  *
- * @group Drupal
  * @group Ajax
  */
 class AjaxCommandsTest extends UnitTestCase {
-
-  public static function getInfo() {
-    return array(
-      'name' => 'Ajax Command Objects',
-      'description' => 'Test that each AJAX command object can be created and rendered',
-      'group' => 'AJAX',
-    );
-  }
 
   /**
    * Tests that AddCssCommand objects can be constructed and rendered.
@@ -63,7 +54,7 @@ class AjaxCommandsTest extends UnitTestCase {
   }
 
   /**
-   * Tests that AfterCommand objecst can be constructed and rendered.
+   * Tests that AfterCommand objects can be constructed and rendered.
    */
   public function testAfterCommand() {
     $command = new AfterCommand('#page-title', '<p>New Text!</p>', array('my-setting' => 'setting'));
@@ -308,7 +299,7 @@ class AjaxCommandsTest extends UnitTestCase {
    * Tests that OpenDialogCommand objects can be constructed and rendered.
    */
   public function testOpenDialogCommand() {
-    $command = new OpenDialogCommand('#some-dialog', 'Title', '<p>Text!</p>', array(
+    $command = new TestOpenDialogCommand('#some-dialog', 'Title', '<p>Text!</p>', array(
       'url' => FALSE,
       'width' => 500,
     ));
@@ -332,7 +323,7 @@ class AjaxCommandsTest extends UnitTestCase {
    * Tests that OpenModalDialogCommand objects can be constructed and rendered.
    */
   public function testOpenModalDialogCommand() {
-    $command = new OpenModalDialogCommand('Title', '<p>Text!</p>', array(
+    $command = new TestOpenModalDialogCommand('Title', '<p>Text!</p>', array(
       'url' => 'example',
       'width' => 500,
     ));
@@ -425,12 +416,26 @@ class AjaxCommandsTest extends UnitTestCase {
 
 }
 
+/**
+ * Wraps OpenModalDialogCommand::drupalAttachLibrary().
+ *
+ * {@inheritdoc}
+ */
+class TestOpenModalDialogCommand extends OpenModalDialogCommand {
+
+  protected function drupalAttachLibrary($name) {
+  }
+
 }
 
-namespace {
-  if (!function_exists('drupal_add_library')) {
-    function drupal_add_library() {
-      return TRUE;
-    }
+/**
+ * Wraps OpenDialogCommand::drupalAttachLibrary().
+ *
+ * {@inheritdoc}
+ */
+class TestOpenDialogCommand extends OpenDialogCommand {
+
+  protected function drupalAttachLibrary($name) {
   }
+
 }

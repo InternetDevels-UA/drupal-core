@@ -13,6 +13,7 @@ use Drupal\Core\Database\Query\Condition;
 use Drupal\Core\Database\SchemaObjectExistsException;
 use Drupal\Core\Database\SchemaObjectDoesNotExistException;
 use Drupal\Core\Database\Schema as DatabaseSchema;
+use Drupal\Component\Utility\Unicode;
 
 /**
  * @addtogroup schemaapi
@@ -169,7 +170,7 @@ class Schema extends DatabaseSchema {
     // $spec['default'] can be NULL, so we explicitly check for the key here.
     if (array_key_exists('default', $spec)) {
       if (is_string($spec['default'])) {
-        $spec['default'] = "'" . $spec['default'] . "'";
+        $spec['default'] = $this->connection->quote($spec['default']);
       }
       elseif (!isset($spec['default'])) {
         $spec['default'] = 'NULL';
@@ -406,7 +407,7 @@ class Schema extends DatabaseSchema {
   public function indexExists($table, $name) {
     // Returns one row for each column in the index. Result is string or FALSE.
     // Details at http://dev.mysql.com/doc/refman/5.0/en/show-index.html
-    $row = $this->connection->query('SHOW INDEX FROM {' . $table . "} WHERE key_name = '$name'")->fetchAssoc();
+    $row = $this->connection->query('SHOW INDEX FROM {' . $table . '} WHERE key_name = ' . $this->connection->quote($name))->fetchAssoc();
     return isset($row['Key_name']);
   }
 
@@ -492,7 +493,7 @@ class Schema extends DatabaseSchema {
     // Truncate comment to maximum comment length.
     if (isset($length)) {
       // Add table prefixes before truncating.
-      $comment = substr($this->connection->prefixTables($comment), 0, $length);
+      $comment = Unicode::truncate($this->connection->prefixTables($comment), $length, TRUE, TRUE);
     }
 
     return $this->connection->quote($comment);

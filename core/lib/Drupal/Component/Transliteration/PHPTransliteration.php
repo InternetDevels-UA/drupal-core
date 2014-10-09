@@ -84,7 +84,6 @@ class PHPTransliteration implements TransliterationInterface {
     // Split into Unicode characters and transliterate each one.
     foreach (preg_split('//u', $string, 0, PREG_SPLIT_NO_EMPTY) as $character) {
       $code = self::ordUTF8($character);
-      $to_add = '';
       if ($code == -1) {
         $to_add = $unknown_character;
       }
@@ -211,7 +210,7 @@ class PHPTransliteration implements TransliterationInterface {
    * Reads in generic transliteration data for a bank of characters.
    *
    * The data is read in from a file named "x$bank.php" (with $bank in
-   * hexidecimal notation) in PHPTransliteration::$dataDirectory. These files
+   * hexadecimal notation) in PHPTransliteration::$dataDirectory. These files
    * should set up a variable $bank containing an array whose numerical indices
    * are the remaining two bytes of the character code, and whose values are the
    * transliterations of these characters into US-ASCII. Note that the maximum

@@ -5,36 +5,8 @@
  * User page callbacks for the Search module.
  */
 
-use Drupal\Core\Language\Language;
-use Symfony\Component\HttpFoundation\RedirectResponse;
-
-/**
- * Prepares variables for search results templates.
- *
- * Default template: search-results.html.twig.
- *
- * @param array $variables
- *   An array with the following elements:
- *   - results: Search results array.
- *   - plugin_id: Plugin the search results came from.
- */
-function template_preprocess_search_results(&$variables) {
-  $variables['search_results'] = '';
-  if (!empty($variables['plugin_id'])) {
-    $variables['plugin_id'] = check_plain($variables['plugin_id']);
-  }
-  foreach ($variables['results'] as $result) {
-    $variables['search_results'][] = array(
-      '#theme' => 'search_result',
-      '#result' => $result,
-      '#plugin_id' => $variables['plugin_id'],
-    );
-  }
-  $variables['pager'] = array('#theme' => 'pager');
-  // @todo Revisit where this help text is added, see also
-  //   http://drupal.org/node/1918856.
-  $variables['help'] = search_help('search#noresults', drupal_help_arg());
-}
+use Drupal\Component\Utility\String;
+use Drupal\Core\Language\LanguageInterface;
 
 /**
  * Implements hook_theme_suggestions_HOOK().
@@ -60,19 +32,19 @@ function search_theme_suggestions_search_result(array $variables) {
  *   - content_attributes: HTML attributes for the content.
  */
 function template_preprocess_search_result(&$variables) {
-  $language_interface = language(Language::TYPE_INTERFACE);
+  $language_interface = \Drupal::languageManager()->getCurrentLanguage();
 
   $result = $variables['result'];
   $variables['url'] = check_url($result['link']);
-  $variables['title'] = check_plain($result['title']);
-  if (isset($result['language']) && $result['language'] != $language_interface->id && $result['language'] != Language::LANGCODE_NOT_SPECIFIED) {
+  $variables['title'] = String::checkPlain($result['title']);
+  if (isset($result['language']) && $result['language'] != $language_interface->id && $result['language'] != LanguageInterface::LANGCODE_NOT_SPECIFIED) {
     $variables['title_attributes']['lang'] = $result['language'];
     $variables['content_attributes']['lang'] = $result['language'];
   }
 
   $info = array();
   if (!empty($result['plugin_id'])) {
-    $info['plugin_id'] = check_plain($result['plugin_id']);
+    $info['plugin_id'] = String::checkPlain($result['plugin_id']);
   }
   if (!empty($result['user'])) {
     $info['user'] = $result['user'];

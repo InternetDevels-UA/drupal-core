@@ -5,15 +5,19 @@
  * Contains \Drupal\Tests\Core\Access\CsrfTokenGeneratorTest.
  */
 
-namespace Drupal\Tests\Core\Access {
+namespace Drupal\Tests\Core\Access;
 
+use Drupal\Core\Site\Settings;
 use Drupal\Tests\UnitTestCase;
 use Drupal\Core\Access\CsrfTokenGenerator;
 use Drupal\Component\Utility\Crypt;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
- * Tests the CSRF token generator.
+ * Tests the CsrfTokenGenerator class.
+ *
+ * @group Access
+ * @coversDefaultClass \Drupal\Core\Access\CsrfTokenGenerator
  */
 class CsrfTokenGeneratorTest extends UnitTestCase {
 
@@ -24,88 +28,189 @@ class CsrfTokenGeneratorTest extends UnitTestCase {
    */
   protected $generator;
 
-  public static function getInfo() {
-    return array(
-      'name' => 'CsrfTokenGenerator test',
-      'description' => 'Tests the CsrfTokenGenerator class.',
-      'group' => 'Access'
-    );
-  }
+  /**
+   * The mock private key instance.
+   *
+   * @var \Drupal\Core\PrivateKey|\PHPUnit_Framework_MockObject_MockObject
+   */
+  protected $privateKey;
+
+  /**
+   * The mock session metadata bag.
+   *
+   * @var \Drupal\Core\Session\MetadataBag|\PHPUnit_Framework_MockObject_MockObject
+   */
+  protected $sessionMetadata;
 
   /**
    * {@inheritdoc}
    */
-  function setUp() {
+  protected function setUp() {
     parent::setUp();
-    $this->key = Crypt::randomStringHashed(55);
 
-    $private_key = $this->getMockBuilder('Drupal\Core\PrivateKey')
+    $this->privateKey = $this->getMockBuilder('Drupal\Core\PrivateKey')
       ->disableOriginalConstructor()
       ->setMethods(array('get'))
       ->getMock();
 
-    $private_key->expects($this->any())
-      ->method('get')
-      ->will($this->returnValue($this->key));
+    $this->sessionMetadata = $this->getMockBuilder('Drupal\Core\Session\MetadataBag')
+      ->disableOriginalConstructor()
+      ->getMock();
 
-    $this->generator = new CsrfTokenGenerator($private_key);
-    $this->generator->setRequest(new Request());
+    $settings = array(
+      'hash_salt' => $this->randomMachineName(),
+    );
+
+    new Settings($settings);
+
+    $this->generator = new CsrfTokenGenerator($this->privateKey, $this->sessionMetadata);
+  }
+
+  /**
+   * Set up default expectations on the mocks.
+   */
+  protected function setupDefaultExpectations() {
+    $key = Crypt::randomBytesBase64();
+    $this->privateKey->expects($this->any())
+      ->method('get')
+      ->will($this->returnValue($key));
+
+    $seed = Crypt::randomBytesBase64();
+    $this->sessionMetadata->expects($this->any())
+      ->method('getCsrfTokenSeed')
+      ->will($this->returnValue($seed));
   }
 
   /**
    * Tests CsrfTokenGenerator::get().
+   *
+   * @covers ::get
    */
   public function testGet() {
+    $this->setupDefaultExpectations();
+
     $this->assertInternalType('string', $this->generator->get());
-    $this->assertNotSame($this->generator->get(), $this->generator->get($this->randomName()));
-    $this->assertNotSame($this->generator->get($this->randomName()), $this->generator->get($this->randomName()));
+    $this->assertNotSame($this->generator->get(), $this->generator->get($this->randomMachineName()));
+    $this->assertNotSame($this->generator->get($this->randomMachineName()), $this->generator->get($this->randomMachineName()));
+  }
+
+  /**
+   * Tests that a new token seed is generated upon first use.
+   *
+   * @covers ::get
+   */
+  public function testGenerateSeedOnGet() {
+    $key = Crypt::randomBytesBase64();
+    $this->privateKey->expects($this->any())
+      ->method('get')
+      ->will($this->returnValue($key));
+
+    $this->sessionMetadata->expects($this->once())
+      ->method('getCsrfTokenSeed')
+      ->will($this->returnValue(NULL));
+
+    $this->sessionMetadata->expects($this->once())
+      ->method('setCsrfTokenSeed')
+      ->with($this->isType('string'));
+
+    $this->assertInternalType('string', $this->generator->get());
   }
 
   /**
    * Tests CsrfTokenGenerator::validate().
+   *
+   * @covers ::validate
    */
   public function testValidate() {
+    $this->setupDefaultExpectations();
+
     $token = $this->generator->get();
     $this->assertTrue($this->generator->validate($token));
     $this->assertFalse($this->generator->validate($token, 'foo'));
 
-
     $token = $this->generator->get('bar');
     $this->assertTrue($this->generator->validate($token, 'bar'));
-
-    // Check the skip_anonymous option with both a anonymous user and a real
-    // user.
-    $account = $this->getMock('Drupal\Core\Session\AccountInterface');
-    $account->expects($this->once())
-      ->method('isAnonymous')
-      ->will($this->returnValue(TRUE));
-    $request = new Request();
-    $request->attributes->set('_account', $account);
-    $this->generator->setRequest($request);
-    $this->assertTrue($this->generator->validate($token, 'foo', TRUE));
-
-    $account = $this->getMock('Drupal\Core\Session\AccountInterface');
-    $account->expects($this->once())
-      ->method('isAnonymous')
-      ->will($this->returnValue(FALSE));
-    $request = new Request();
-    $request->attributes->set('_account', $account);
-    $this->generator->setRequest($request);
-
-    $this->assertFalse($this->generator->validate($token, 'foo', TRUE));
   }
 
-}
+  /**
+   * Tests CsrfTokenGenerator::validate() with different parameter types.
+   *
+   * @param mixed $token
+   *   The token to be validated.
+   * @param mixed $value
+   *   (optional) An additional value to base the token on.
+   *
+   * @covers ::validate
+   * @dataProvider providerTestValidateParameterTypes
+   */
+  public function testValidateParameterTypes($token, $value) {
+    $this->setupDefaultExpectations();
 
-}
-
-/**
- * @todo Remove this when https://drupal.org/node/2036259 is resolved.
- */
-namespace {
-  if (!function_exists('drupal_get_hash_salt')) {
-    function drupal_get_hash_salt() {
-      return hash('sha256', 'test_hash_salt');
-    }
+    // The following check might throw PHP fatals and notices, so we disable
+    // error assertions.
+    set_error_handler(function () {return TRUE;});
+    $this->assertFalse($this->generator->validate($token, $value));
+    restore_error_handler();
   }
+
+  /**
+   * Provides data for testValidateParameterTypes.
+   *
+   * @return array
+   *   An array of data used by the test.
+   */
+  public function providerTestValidateParameterTypes() {
+    return array(
+      array(array(), ''),
+      array(TRUE, 'foo'),
+      array(0, 'foo'),
+    );
+  }
+
+  /**
+   * Tests CsrfTokenGenerator::validate() with invalid parameter types.
+   *
+   * @param mixed $token
+   *   The token to be validated.
+   * @param mixed $value
+   *   (optional) An additional value to base the token on.
+   *
+   * @covers ::validate
+   * @dataProvider providerTestInvalidParameterTypes
+   * @expectedException InvalidArgumentException
+   */
+  public function testInvalidParameterTypes($token, $value = '') {
+    $this->setupDefaultExpectations();
+
+    $this->generator->validate($token, $value);
+  }
+
+  /**
+   * Provides data for testInvalidParameterTypes.
+   *
+   * @return array
+   *   An array of data used by the test.
+   */
+  public function providerTestInvalidParameterTypes() {
+    return array(
+      array(NULL, new \stdClass()),
+      array(0, array()),
+      array('', array()),
+      array(array(), array()),
+    );
+  }
+
+  /**
+   * Tests the exception thrown when no 'hash_salt' is provided in settings.
+   *
+   * @covers ::get
+   * @expectedException \RuntimeException
+   */
+  public function testGetWithNoHashSalt() {
+    // Update settings with no hash salt.
+    new Settings(array());
+    $generator = new CsrfTokenGenerator($this->privateKey, $this->sessionMetadata);
+    $generator->get();
+  }
+
 }

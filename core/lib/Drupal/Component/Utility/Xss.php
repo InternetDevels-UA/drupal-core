@@ -9,8 +9,22 @@ namespace Drupal\Component\Utility;
 
 /**
  * Provides helper to filter for cross-site scripting.
+ *
+ * @ingroup utility
  */
 class Xss {
+
+  /**
+   * Indicates that XSS filtering must be applied in whitelist mode: only
+   * specified HTML tags are allowed.
+   */
+  const FILTER_MODE_WHITELIST = TRUE;
+
+  /**
+   * Indicates that XSS filtering must be applied in blacklist mode: only
+   * specified HTML tags are disallowed.
+   */
+  const FILTER_MODE_BLACKLIST = FALSE;
 
   /**
    * The list of html tags allowed by filterAdmin().
@@ -27,35 +41,40 @@ class Xss {
    * Based on kses by Ulf Harnhammar, see http://sourceforge.net/projects/kses.
    * For examples of various XSS attacks, see: http://ha.ckers.org/xss.html.
    *
-   * This code does four things:
+   * This code does five things:
    * - Removes characters and constructs that can trick browsers.
    * - Makes sure all HTML entities are well-formed.
    * - Makes sure all HTML tags and attributes are well-formed.
    * - Makes sure no HTML tags contain URLs with a disallowed protocol (e.g.
    *   javascript:).
+   * - Marks the sanitized, XSS-safe version of $string as safe markup for
+   *   rendering.
    *
    * @param $string
-   *   The string with raw HTML in it. It will be stripped of everything that can
-   *   cause an XSS attack.
-   * @param array $allowed_tags
-   *   An array of allowed tags.
+   *   The string with raw HTML in it. It will be stripped of everything that
+   *   can cause an XSS attack.
+   * @param array $html_tags
+   *   An array of HTML tags.
+   * @param bool $mode
+   *   (optional) Defaults to FILTER_MODE_WHITELIST ($html_tags is used as a
+   *   whitelist of allowed tags), but can also be set to FILTER_MODE_BLACKLIST
+   *   ($html_tags is used as a blacklist of disallowed tags).
    *
    * @return string
    *   An XSS safe version of $string, or an empty string if $string is not
    *   valid UTF-8.
    *
    * @see \Drupal\Component\Utility\Unicode::validateUtf8()
+   * @see \Drupal\Component\Utility\SafeMarkup
    *
    * @ingroup sanitization
    */
-  public static function filter($string, $allowed_tags = array('a', 'em', 'strong', 'cite', 'blockquote', 'code', 'ul', 'ol', 'li', 'dl', 'dt', 'dd')) {
+  public static function filter($string, $html_tags = array('a', 'em', 'strong', 'cite', 'blockquote', 'code', 'ul', 'ol', 'li', 'dl', 'dt', 'dd'), $mode = Xss::FILTER_MODE_WHITELIST) {
     // Only operate on valid UTF-8 strings. This is necessary to prevent cross
     // site scripting issues on Internet Explorer 6.
     if (!Unicode::validateUtf8($string)) {
       return '';
     }
-    // Store the text format.
-    static::split($allowed_tags, TRUE);
     // Remove NULL characters (ignored by some browsers).
     $string = str_replace(chr(0), '', $string);
     // Remove Netscape 4 JS entities.
@@ -70,8 +89,11 @@ class Xss {
     $string = preg_replace('/&amp;#[Xx]0*((?:[0-9A-Fa-f]{2})+;)/', '&#x\1', $string);
     // Named entities.
     $string = preg_replace('/&amp;([A-Za-z][A-Za-z0-9]*;)/', '&\1', $string);
-
-    return preg_replace_callback('%
+    $html_tags = array_flip($html_tags);
+    $splitter = function ($matches) use ($html_tags, $mode) {
+      return static::split($matches[1], $html_tags, $mode);
+    };
+    return SafeMarkup::set(preg_replace_callback('%
       (
       <(?=[^a-zA-Z!/])  # a lone <
       |                 # or
@@ -80,7 +102,7 @@ class Xss {
       <[^>]*(>|$)       # a string that starts with a <, up until the > or the end of the string
       |                 # or
       >                 # just a >
-      )%x', '\Drupal\Component\Utility\Xss::split', $string);
+      )%x', $splitter, $string));
   }
 
   /**
@@ -88,7 +110,8 @@ class Xss {
    *
    * Use only for fields where it is impractical to use the
    * whole filter system, but where some (mainly inline) mark-up
-   * is desired (so check_plain() is not acceptable).
+   * is desired (so \Drupal\Component\Utility\String::checkPlain() is
+   * not acceptable).
    *
    * Allows all tags that can be used inside an HTML body, save
    * for scripts and styles.
@@ -106,27 +129,20 @@ class Xss {
   /**
    * Processes an HTML tag.
    *
-   * @param array $matches
-   *   An array with various meaning depending on the value of $store.
-   *   If $store is TRUE then the array contains the allowed tags.
-   *   If $store is FALSE then the array has one element, the HTML tag to process.
-   * @param bool $store
-   *   Whether to store $m.
+   * @param string $string
+   *   The HTML tag to process.
+   * @param array $html_tags
+   *   An array where the keys are the allowed tags and the values are not
+   *   used.
+   * @param bool $split_mode
+   *   Whether $html_tags is a list of allowed (if FILTER_MODE_WHITELIST) or
+   *   disallowed (if FILTER_MODE_BLACKLIST) HTML tags.
    *
    * @return string
    *   If the element isn't allowed, an empty string. Otherwise, the cleaned up
    *   version of the HTML element.
    */
-  protected static function split($matches, $store = FALSE) {
-    static $allowed_html;
-
-    if ($store) {
-      $allowed_html = array_flip($matches);
-      return;
-    }
-
-    $string = $matches[1];
-
+  protected static function split($string, $html_tags, $split_mode) {
     if (substr($string, 0, 1) != '<') {
       // We matched a lone ">" character.
       return '&gt;';
@@ -136,7 +152,7 @@ class Xss {
       return '&lt;';
     }
 
-    if (!preg_match('%^<\s*(/\s*)?([a-zA-Z0-9]+)([^>]*)>?|(<!--.*?-->)$%', $string, $matches)) {
+    if (!preg_match('%^<\s*(/\s*)?([a-zA-Z0-9\-]+)([^>]*)>?|(<!--.*?-->)$%', $string, $matches)) {
       // Seriously malformed.
       return '';
     }
@@ -150,8 +166,12 @@ class Xss {
       $elem = '!--';
     }
 
-    if (!isset($allowed_html[strtolower($elem)])) {
-      // Disallowed HTML element.
+    // When in whitelist mode, an element is disallowed when not listed.
+    if ($split_mode === static::FILTER_MODE_WHITELIST && !isset($html_tags[strtolower($elem)])) {
+      return '';
+    }
+    // When in blacklist mode, an element is disallowed when listed.
+    elseif ($split_mode === static::FILTER_MODE_BLACKLIST && isset($html_tags[strtolower($elem)])) {
       return '';
     }
 
@@ -225,7 +245,7 @@ class Xss {
         case 2:
           // Attribute value, a URL after href= for instance.
           if (preg_match('/^"([^"]*)"(\s+|$)/', $attributes, $match)) {
-            $thisval = Url::filterBadProtocol($match[1]);
+            $thisval = UrlHelper::filterBadProtocol($match[1]);
 
             if (!$skip) {
               $attributes_array[] = "$attribute_name=\"$thisval\"";
@@ -237,7 +257,7 @@ class Xss {
           }
 
           if (preg_match("/^'([^']*)'(\s+|$)/", $attributes, $match)) {
-            $thisval = Url::filterBadProtocol($match[1]);
+            $thisval = UrlHelper::filterBadProtocol($match[1]);
 
             if (!$skip) {
               $attributes_array[] = "$attribute_name='$thisval'";
@@ -248,7 +268,7 @@ class Xss {
           }
 
           if (preg_match("%^([^\s\"']+)(\s+|$)%", $attributes, $match)) {
-            $thisval = Url::filterBadProtocol($match[1]);
+            $thisval = UrlHelper::filterBadProtocol($match[1]);
 
             if (!$skip) {
               $attributes_array[] = "$attribute_name=\"$thisval\"";

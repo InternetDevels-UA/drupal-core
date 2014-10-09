@@ -9,6 +9,8 @@
 
 namespace Drupal\Core\Utility;
 
+use Drupal\Core\Extension\Extension;
+
 /**
  * Performs operations on drupal.org project data.
  */
@@ -16,6 +18,10 @@ class ProjectInfo {
 
   /**
    * Populates an array of project data.
+   *
+   * @todo https://www.drupal.org/node/2338167 update class since extensions can
+   *   no longer be hidden, enabled or disabled. Additionally, base themes have
+   *   to be installed for sub themes to work.
    *
    * This iterates over a list of the installed modules or themes and groups
    * them by project and status. A few parts of this function assume that
@@ -29,35 +35,35 @@ class ProjectInfo {
    * files for each module or theme, which is important data which is used when
    * deciding if the available update data should be invalidated.
    *
-   * @param $projects
+   * @param array $projects
    *   Reference to the array of project data of what's installed on this site.
-   * @param $list
+   * @param \Drupal\Core\Extension\Extension[] $list
    *   Array of data to process to add the relevant info to the $projects array.
-   * @param $project_type
+   * @param string $project_type
    *   The kind of data in the list. Can be 'module' or 'theme'.
-   * @param $status
+   * @param bool $status
    *   Boolean that controls what status (enabled or disabled) to process out of
    *   the $list and add to the $projects array.
-   * @param $additional_whitelist
+   * @param array $additional_whitelist
    *   (optional) Array of additional elements to be collected from the .info.yml
    *   file. Defaults to array().
    */
-  function processInfoList(&$projects, $list, $project_type, $status, $additional_whitelist = array()) {
+  function processInfoList(array &$projects, array $list, $project_type, $status, array $additional_whitelist = array()) {
     foreach ($list as $file) {
       // A disabled or hidden base theme of an enabled sub-theme still has all
       // of its code run by the sub-theme, so we include it in our "enabled"
       // projects list.
       if ($status && !empty($file->sub_themes)) {
         foreach ($file->sub_themes as $key => $name) {
-          // Build a list of enabled sub-themes.
+          // Build a list of installed sub-themes.
           if ($list[$key]->status) {
-            $file->enabled_sub_themes[$key] = $name;
+            $file->installed_sub_themes[$key] = $name;
           }
         }
-        // If the theme is disabled and there are no enabled subthemes, we
-        // should ignore this base theme for the enabled case. If the site is
-        // trying to display disabled themes, we'll catch it then.
-        if (!$file->status && empty($file->enabled_sub_themes)) {
+        // If the theme is uninstalled and there are no installed subthemes, we
+        // should ignore this base theme for the installed case. If the site is
+        // trying to display uninstalled themes, we'll catch it then.
+        if (!$file->status && empty($file->installed_sub_themes)) {
           continue;
         }
       }
@@ -71,8 +77,9 @@ class ProjectInfo {
         continue;
       }
 
-      // Skip if it's a hidden module or hidden theme without enabled sub-themes.
-      if (!empty($file->info['hidden']) && empty($file->enabled_sub_themes)) {
+      // Skip if it's a hidden module or hidden theme without installed
+      // sub-themes.
+      if (!empty($file->info['hidden']) && empty($file->installed_sub_themes)) {
         continue;
       }
 
@@ -94,8 +101,7 @@ class ProjectInfo {
       // which is left alone by tar and correctly set to the time the .info.yml
       // file was unpacked.
       if (!isset($file->info['_info_file_ctime'])) {
-        $info_filename = dirname($file->uri) . '/' . $file->name . '.info.yml';
-        $file->info['_info_file_ctime'] = filectime($info_filename);
+        $file->info['_info_file_ctime'] = $file->getCTime();
       }
 
       if (!isset($file->info['datestamp'])) {
@@ -114,10 +120,10 @@ class ProjectInfo {
       else {
         $project_display_type = $project_type;
       }
-      if (empty($status) && empty($file->enabled_sub_themes)) {
+      if (empty($status) && empty($file->installed_sub_themes)) {
         // If we're processing disabled modules or themes, append a suffix.
-        // However, we don't do this to a a base theme with enabled
-        // subthemes, since we treat that case as if it is enabled.
+        // However, we don't do this to a base theme with installed
+        // subthemes, since we treat that case as if it is installed.
         $project_display_type .= '-disabled';
       }
       // Add a list of sub-themes that "depend on" the project and a list of base
@@ -128,8 +134,8 @@ class ProjectInfo {
         $base_themes = array();
       }
       else {
-        // Add list of enabled sub-themes.
-        $sub_themes = !empty($file->enabled_sub_themes) ? $file->enabled_sub_themes : array();
+        // Add list of installed sub-themes.
+        $sub_themes = !empty($file->installed_sub_themes) ? $file->installed_sub_themes : array();
         // Add list of base themes.
         $base_themes = !empty($file->base_themes) ? $file->base_themes : array();
       }
@@ -142,7 +148,7 @@ class ProjectInfo {
           // not bloat our RAM usage needlessly.
           'info' => $this->filterProjectInfo($file->info, $additional_whitelist),
           'datestamp' => $file->info['datestamp'],
-          'includes' => array($file->name => $file->info['name']),
+          'includes' => array($file->getName() => $file->info['name']),
           'project_type' => $project_display_type,
           'project_status' => $status,
           'sub_themes' => $sub_themes,
@@ -155,7 +161,7 @@ class ProjectInfo {
         // $project_display_type). This prevents listing all the disabled
         // modules included with an enabled project if we happen to be checking
         // for disabled modules, too.
-        $projects[$project_name]['includes'][$file->name] = $file->info['name'];
+        $projects[$project_name]['includes'][$file->getName()] = $file->info['name'];
         $projects[$project_name]['info']['_info_file_ctime'] = max($projects[$project_name]['info']['_info_file_ctime'], $file->info['_info_file_ctime']);
         $projects[$project_name]['datestamp'] = max($projects[$project_name]['datestamp'], $file->info['datestamp']);
         if (!empty($sub_themes)) {
@@ -170,7 +176,7 @@ class ProjectInfo {
         // does not, it means we're processing a disabled module or theme that
         // belongs to a project that has some enabled code. In this case, we add
         // the disabled thing into a separate array for separate display.
-        $projects[$project_name]['disabled'][$file->name] = $file->info['name'];
+        $projects[$project_name]['disabled'][$file->getName()] = $file->info['name'];
       }
     }
   }
@@ -178,20 +184,18 @@ class ProjectInfo {
   /**
    * Determines what project a given file object belongs to.
    *
-   * @param $file
-   *   A file object as returned by system_get_files_database().
+   * @param \Drupal\Core\Extension\Extension $file
+   *   An extension object.
    *
-   * @return
+   * @return string
    *   The canonical project short name.
-   *
-   * @see system_get_files_database()
    */
-  function getProjectName($file) {
+  function getProjectName(Extension $file) {
     $project_name = '';
     if (isset($file->info['project'])) {
       $project_name = $file->info['project'];
     }
-    elseif (isset($file->filename) && (strpos($file->filename, 'core/modules') === 0)) {
+    elseif (strpos($file->getPath(), 'core/modules') === 0) {
       $project_name = 'drupal';
     }
     return $project_name;
@@ -224,7 +228,7 @@ class ProjectInfo {
       'version',
     );
     $whitelist = array_merge($whitelist, $additional_whitelist);
-    return array_intersect_key($info, drupal_map_assoc($whitelist));
+    return array_intersect_key($info, array_combine($whitelist, $whitelist));
   }
 
 }

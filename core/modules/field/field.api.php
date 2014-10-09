@@ -6,96 +6,6 @@
  */
 
 use Drupal\Component\Utility\NestedArray;
-use Drupal\field\FieldUpdateForbiddenException;
-
-/**
- * Exposes "pseudo-field" components on fieldable entities.
- *
- * Field UI's "Manage fields" and "Manage display" pages let users re-order
- * fields, but also non-field components. For nodes, these include the title
- * and other elements exposed by modules through hook_form_alter().
- *
- * Fieldable entities or modules that want to have their components supported
- * should expose them using this hook. The user-defined settings (weight,
- * visible) are automatically applied on rendered forms and displayed entities
- * in a #pre_render callback added by field_attach_form() and
- * field_attach_view().
- *
- * @see hook_field_extra_fields_alter()
- *
- * @return array
- *   A nested array of 'pseudo-field' elements. Each list is nested within the
- *   following keys: entity type, bundle name, context (either 'form' or
- *   'display'). The keys are the name of the elements as appearing in the
- *   renderable array (either the entity form or the displayed entity). The
- *   value is an associative array:
- *   - label: The human readable name of the element.
- *   - description: A short description of the element contents.
- *   - weight: The default weight of the element.
- *   - visible: (optional) The default visibility of the element. Defaults to
- *     TRUE.
- *   - edit: (optional) String containing markup (normally a link) used as the
- *     element's 'edit' operation in the administration interface. Only for
- *     'form' context.
- *   - delete: (optional) String containing markup (normally a link) used as the
- *     element's 'delete' operation in the administration interface. Only for
- *     'form' context.
- */
-function hook_field_extra_fields() {
-  $extra = array();
-  $module_language_enabled = \Drupal::moduleHandler()->moduleExists('language');
-  $description = t('Node module element');
-
-  foreach (node_type_get_types() as $bundle) {
-    if ($bundle->has_title) {
-      $extra['node'][$bundle->type]['form']['title'] = array(
-        'label' => $bundle->title_label,
-        'description' => $description,
-        'weight' => -5,
-      );
-    }
-
-    // Add also the 'language' select if Language module is enabled and the
-    // bundle has multilingual support.
-    // Visibility of the ordering of the language selector is the same as on the
-    // node/add form.
-    if ($module_language_enabled) {
-      $configuration = language_get_default_configuration('node', $bundle->type);
-      if ($configuration['language_show']) {
-        $extra['node'][$bundle->type]['form']['language'] = array(
-          'label' => t('Language'),
-          'description' => $description,
-          'weight' => 0,
-        );
-      }
-    }
-    $extra['node'][$bundle->type]['display']['language'] = array(
-      'label' => t('Language'),
-      'description' => $description,
-      'weight' => 0,
-      'visible' => FALSE,
-    );
-  }
-
-  return $extra;
-}
-
-/**
- * Alter "pseudo-field" components on fieldable entities.
- *
- * @param $info
- *   The associative array of 'pseudo-field' components.
- *
- * @see hook_field_extra_fields()
- */
-function hook_field_extra_fields_alter(&$info) {
-  // Force node title to always be at the top of the list by default.
-  foreach (node_type_get_types() as $bundle) {
-    if (isset($info['node'][$bundle->type]['form']['title'])) {
-      $info['node'][$bundle->type]['form']['title']['weight'] = -20;
-    }
-  }
-}
 
 /**
  * @defgroup field_types Field Types API
@@ -107,6 +17,15 @@ function hook_field_extra_fields_alter(&$info) {
  * and so on. The data type(s) accepted by a field are defined in
  * hook_field_schema().
  *
+ * Field types are plugins annotated with class
+ * \Drupal\Core\Field\Annotation\FieldType, and implement plugin interface
+ * \Drupal\Core\Field\FieldItemInterface. Field Type plugins are managed by the
+ * \Drupal\Core\Field\FieldTypePluginManager class. Field type classes usually
+ * extend base class \Drupal\Core\Field\FieldItemBase. Field-type plugins need
+ * to be in the namespace \Drupal\{your_module}\Plugin\Field\FieldType. See the
+ * @link plugin_api Plugin API topic @endlink for more information on how to
+ * define plugins.
+ *
  * The Field Types API also defines two kinds of pluggable handlers: widgets
  * and formatters. @link field_widget Widgets @endlink specify how the field
  * appears in edit forms, while @link field_formatter formatters @endlink
@@ -114,6 +33,11 @@ function hook_field_extra_fields_alter(&$info) {
  *
  * See @link field Field API @endlink for information about the other parts of
  * the Field API.
+ *
+ * @see field
+ * @see field_widget
+ * @see field_formatter
+ * @see plugin_api
  */
 
 
@@ -125,16 +49,41 @@ function hook_field_extra_fields_alter(&$info) {
  *   manager.
  */
 function hook_field_info_alter(&$info) {
-  // Add a setting to all field types.
-  foreach ($info as $field_type => $field_type_info) {
-    $info[$field_type]['settings'] += array(
-      'mymodule_additional_setting' => 'default value',
-    );
-  }
-
   // Change the default widget for fields of type 'foo'.
   if (isset($info['foo'])) {
     $info['foo']['default widget'] = 'mymodule_widget';
+  }
+}
+
+/**
+ * Forbid a field storage update from occurring.
+ *
+ * Any module may forbid any update for any reason. For example, the
+ * field's storage module might forbid an update if it would change
+ * the storage schema while data for the field exists. A field type
+ * module might forbid an update if it would change existing data's
+ * semantics, or if there are external dependencies on field settings
+ * that cannot be updated.
+ *
+ * To forbid the update from occurring, throw a
+ * \Drupal\Core\Entity\Exception\FieldStorageDefinitionUpdateForbiddenException.
+ *
+ * @param \Drupal\field\FieldStorageConfigInterface $field_storage
+ *   The field storage as it will be post-update.
+ * @param \Drupal\field\FieldStorageConfigInterface $prior_field_storage
+ *   The field storage as it is pre-update.
+ *
+ * @see entity_crud
+ */
+function hook_field_storage_config_update_forbid(\Drupal\field\FieldStorageConfigInterface $field_storage, \Drupal\field\FieldStorageConfigInterface $prior_field_storage) {
+  if ($field_storage->module == 'options' && $field_storage->hasData()) {
+    // Forbid any update that removes allowed values with actual data.
+    $allowed_values = $field_storage->getSetting('allowed_values');
+    $prior_allowed_values = $prior_field_storage->getSetting('allowed_values');
+    $lost_keys = array_diff(array_keys($prior_allowed_values), array_keys($allowed_values));
+    if (_options_values_in_use($field_storage->entity_type, $field_storage->getName(), $lost_keys)) {
+      throw new \Drupal\Core\Entity\Exception\FieldStorageDefinitionUpdateForbiddenException(t('A list field (@field_name) with existing data cannot have its keys changed.', array('@field_name' => $field_storage->getName())));
+    }
   }
 }
 
@@ -153,35 +102,31 @@ function hook_field_info_alter(&$info) {
  * which widget to use.
  *
  * Widgets are Plugins managed by the
- * Drupal\Core\Field\WidgetPluginManager class. A widget is
- * implemented by providing a class that implements
- * Drupal\Core\Field\WidgetInterface (in most cases, by
- * subclassing Drupal\Core\Field\WidgetBase), and provides the
- * proper annotation block.
+ * \Drupal\Core\Field\WidgetPluginManager class. A widget is a plugin annotated
+ * with class \Drupal\Core\Field\Annotation\FieldWidget that implements
+ * \Drupal\Core\Field\WidgetInterface (in most cases, by
+ * subclassing \Drupal\Core\Field\WidgetBase). Widget plugins need to be in the
+ * namespace \Drupal\{your_module}\Plugin\Field\FieldWidget.
  *
  * Widgets are @link forms_api_reference.html Form API @endlink
  * elements with additional processing capabilities. The methods of the
- * WidgetInterface object are typically called by the Field Attach API during
- * the creation of the field form structure with field_attach_form().
+ * WidgetInterface object are typically called by respective methods in the
+ * \Drupal\Core\Entity\Entity\EntityFormDisplay class.
  *
  * @see field
  * @see field_types
  * @see field_formatter
+ * @see plugin_api
  */
 
 /**
  * Perform alterations on Field API widget types.
  *
  * @param array $info
- *   An array of informations on existing widget types, as collected by the
+ *   An array of information on existing widget types, as collected by the
  *   annotation discovery mechanism.
  */
 function hook_field_widget_info_alter(array &$info) {
-  // Add a setting to a widget type.
-  $info['text_textfield']['settings'] += array(
-    'mymodule_additional_setting' => 'default value',
-  );
-
   // Let a new field type re-use an existing widget.
   $info['options_select']['field_types'][] = 'my_field_type';
 }
@@ -192,7 +137,7 @@ function hook_field_widget_info_alter(array &$info) {
  * @param $element
  *   The field widget form element as constructed by hook_field_widget_form().
  * @param $form_state
- *   An associative array containing the current state of the form.
+ *   The current state of the form.
  * @param $context
  *   An associative array containing the following key-value pairs:
  *   - form: The form structure to which widgets are being attached. This may be
@@ -207,10 +152,10 @@ function hook_field_widget_info_alter(array &$info) {
  * @see \Drupal\Core\Field\WidgetBase::formSingleElement()
  * @see hook_field_widget_WIDGET_TYPE_form_alter()
  */
-function hook_field_widget_form_alter(&$element, &$form_state, $context) {
+function hook_field_widget_form_alter(&$element, \Drupal\Core\Form\FormStateInterface $form_state, $context) {
   // Add a css class to widget form elements for all fields of type mytype.
   $field_definition = $context['items']->getFieldDefinition();
-  if ($field_definition->getFieldType() == 'mytype') {
+  if ($field_definition->getType() == 'mytype') {
     // Be sure not to overwrite existing attributes.
     $element['#attributes']['class'][] = 'myclass';
   }
@@ -226,7 +171,7 @@ function hook_field_widget_form_alter(&$element, &$form_state, $context) {
  * @param $element
  *   The field widget form element as constructed by hook_field_widget_form().
  * @param $form_state
- *   An associative array containing the current state of the form.
+ *   The current state of the form.
  * @param $context
  *   An associative array. See hook_field_widget_form_alter() for the structure
  *   and content of the array.
@@ -234,7 +179,7 @@ function hook_field_widget_form_alter(&$element, &$form_state, $context) {
  * @see \Drupal\Core\Field\WidgetBase::formSingleElement()
  * @see hook_field_widget_form_alter()
  */
-function hook_field_widget_WIDGET_TYPE_form_alter(&$element, &$form_state, $context) {
+function hook_field_widget_WIDGET_TYPE_form_alter(&$element, \Drupal\Core\Form\FormStateInterface $form_state, $context) {
   // Code here will only act on widgets of type WIDGET_TYPE.  For example,
   // hook_field_widget_mymodule_autocomplete_form_alter() will only act on
   // widgets of type 'mymodule_autocomplete'.
@@ -258,207 +203,32 @@ function hook_field_widget_WIDGET_TYPE_form_alter(&$element, &$form_state, $cont
  * choose which formatter to use.
  *
  * Formatters are Plugins managed by the
- * Drupal\Core\Field\FormatterPluginManager class. A formatter
- * is implemented by providing a class that implements
- * Drupal\Core\Field\FormatterInterface (in most cases, by
- * subclassing Drupal\Core\Field\FormatterBase), and provides
- * the proper annotation block.
+ * \Drupal\Core\Field\FormatterPluginManager class. A formatter is a plugin
+ * annotated with class \Drupal\Core\Field\Annotation\FieldFormatter that
+ * implements \Drupal\Core\Field\FormatterInterface (in most cases, by
+ * subclassing \Drupal\Core\Field\FormatterBase). Formatter plugins need to be
+ * in the namespace \Drupal\{your_module}\Plugin\Field\FieldFormatter.
  *
  * @see field
  * @see field_types
  * @see field_widget
+ * @see plugin_api
  */
 
 /**
  * Perform alterations on Field API formatter types.
  *
  * @param array $info
- *   An array of informations on existing formatter types, as collected by the
+ *   An array of information on existing formatter types, as collected by the
  *   annotation discovery mechanism.
  */
 function hook_field_formatter_info_alter(array &$info) {
-  // Add a setting to a formatter type.
-  $info['text_default']['settings'] += array(
-    'mymodule_additional_setting' => 'default value',
-  );
-
   // Let a new field type re-use an existing formatter.
   $info['text_default']['field types'][] = 'my_field_type';
 }
 
 /**
  * @} End of "defgroup field_formatter".
- */
-
-/**
- * @addtogroup field_attach
- * @{
- */
-
-/**
- * Act on field_attach_form().
- *
- * This hook is invoked after the field module has performed the operation.
- * Implementing modules should alter the $form or $form_state parameters.
- *
- * @param \Drupal\Core\Entity\EntityInterface $entity
- *   The entity for which an edit form is being built.
- * @param $form
- *   The form structure field elements are attached to. This might be a full
- *   form structure, or a sub-element of a larger form. The $form['#parents']
- *   property can be used to identify the corresponding part of
- *   $form_state['values']. Hook implementations that need to act on the
- *   top-level properties of the global form (like #submit, #validate...) can
- *   add a #process callback to the array received in the $form parameter, and
- *   act on the $complete_form parameter in the process callback.
- * @param $form_state
- *   An associative array containing the current state of the form.
- * @param $langcode
- *   The language the field values are going to be entered in. If no language is
- *   provided the default site language will be used.
- *
- * @deprecated as of Drupal 8.0. Use the entity system instead.
- */
-function hook_field_attach_form(\Drupal\Core\Entity\EntityInterface $entity, &$form, &$form_state, $langcode) {
-  // Add a checkbox allowing a given field to be emptied.
-  // See hook_field_attach_extract_form_values() for the corresponding
-  // processing code.
-  $form['empty_field_foo'] = array(
-    '#type' => 'checkbox',
-    '#title' => t("Empty the 'field_foo' field"),
-  );
-}
-
-/**
- * Act on field_attach_extract_form_values().
- *
- * This hook is invoked after the field module has performed the operation.
- *
- * @param \Drupal\Core\Entity\EntityInterface $entity
- *   The entity for which an edit form is being submitted. The incoming form
- *   values have been extracted as field values of the $entity object.
- * @param $form
- *   The form structure field elements are attached to. This might be a full
- *   form structure, or a sub-part of a larger form. The $form['#parents']
- *   property can be used to identify the corresponding part of
- *   $form_state['values'].
- * @param $form_state
- *   An associative array containing the current state of the form.
- *
- * @deprecated as of Drupal 8.0. Use the entity system instead.
- */
-function hook_field_attach_extract_form_values(\Drupal\Core\Entity\EntityInterface $entity, $form, &$form_state) {
-  // Sample case of an 'Empty the field' checkbox added on the form, allowing
-  // a given field to be emptied.
-  $values = NestedArray::getValue($form_state['values'], $form['#parents']);
-  if (!empty($values['empty_field_foo'])) {
-    unset($entity->field_foo);
-  }
-}
-
-/**
- * Alter field_attach_preprocess() variables.
- *
- * This hook is invoked while preprocessing field templates in
- * field_attach_preprocess().
- *
- * @param $variables
- *   The variables array is passed by reference and will be populated with field
- *   values.
- * @param $context
- *   An associative array containing:
- *   - entity: The entity with fields to render.
- *   - element: The structured array containing the values ready for rendering.
- */
-function hook_field_attach_preprocess_alter(&$variables, $context) {
-  // @todo Needs function body.
-}
-
-/**
- * Perform alterations on field_attach_view() or field_view_field().
- *
- * This hook is invoked after the field module has performed the operation.
- *
- * @param $output
- *   The structured content array tree for all of the entity's fields.
- * @param $context
- *   An associative array containing:
- *   - entity: The entity with fields to render.
- *   - view_mode: View mode; for example, 'full' or 'teaser'.
- *   - display_options: Either a view mode string or an array of display
- *     options. If this hook is being invoked from field_attach_view(), the
- *     'display_options' element is set to the view mode string. If this hook
- *     is being invoked from field_view_field(), this element is set to the
- *     $display_options argument and the view_mode element is set to '_custom'.
- *     See field_view_field() for more information on what its $display_options
- *     argument contains.
- *   - langcode: The language code used for rendering.
- *
- * @deprecated as of Drupal 8.0. Use the entity system instead.
- */
-function hook_field_attach_view_alter(&$output, $context) {
-  // Append RDF term mappings on displayed taxonomy links.
-  foreach (element_children($output) as $field_name) {
-    $element = &$output[$field_name];
-    if ($element['#field_type'] == 'entity_reference' && $element['#formatter'] == 'entity_reference_label') {
-      foreach ($element['#items'] as $delta => $item) {
-        $term = $item['entity'];
-        if (!empty($term->rdf_mapping['rdftype'])) {
-          $element[$delta]['#options']['attributes']['typeof'] = $term->rdf_mapping['rdftype'];
-        }
-        if (!empty($term->rdf_mapping['name']['predicates'])) {
-          $element[$delta]['#options']['attributes']['property'] = $term->rdf_mapping['name']['predicates'];
-        }
-      }
-    }
-  }
-}
-
-/**
- * Perform alterations on field_language() values.
- *
- * This hook is invoked to alter the array of display language codes for the
- * given entity.
- *
- * @param $display_langcode
- *   A reference to an array of language codes keyed by field name.
- * @param $context
- *   An associative array containing:
- *   - entity: The entity with fields to render.
- *   - langcode: The language code $entity has to be displayed in.
- */
-function hook_field_language_alter(&$display_langcode, $context) {
-  // Do not apply core language fallback rules if they are disabled or if Locale
-  // is not registered as a translation handler.
-  if (field_language_fallback_enabled() && field_has_translation_handler($context['entity']->entityType())) {
-    field_language_fallback($display_langcode, $context['entity'], $context['langcode']);
-  }
-}
-
-/**
- * Alter field_available_languages() values.
- *
- * This hook is invoked from field_available_languages() to allow modules to
- * alter the array of available language codes for the given field.
- *
- * @param $langcodes
- *   A reference to an array of language codes to be made available.
- * @param $context
- *   An associative array containing:
- *   - entity_type: The type of the entity the field is attached to.
- *   - field: A field data structure.
- */
-function hook_field_available_languages_alter(&$langcodes, $context) {
-  // Add an unavailable language code.
-  $langcodes[] = 'xx';
-
-  // Remove an available language code.
-  $index = array_search('yy', $langcodes);
-  unset($langcodes[$index]);
-}
-
-/**
- * @} End of "addtogroup field_attach".
  */
 
 /**
@@ -480,6 +250,8 @@ function hook_field_available_languages_alter(&$langcodes, $context) {
  * @return int
  *   The maximum weight of the entity's components, or NULL if no components
  *   were found.
+ *
+ * @ingroup field_info
  */
 function hook_field_info_max_weight($entity_type, $bundle, $context, $context_mode) {
   $weights = array();
@@ -492,84 +264,46 @@ function hook_field_info_max_weight($entity_type, $bundle, $context, $context_mo
 }
 
 /**
- * @addtogroup field_crud
+ * @addtogroup field_purge
  * @{
  */
 
 /**
- * Forbid a field update from occurring.
+ * Acts when a field storage definition is being purged.
  *
- * Any module may forbid any update for any reason. For example, the
- * field's storage module might forbid an update if it would change
- * the storage schema while data for the field exists. A field type
- * module might forbid an update if it would change existing data's
- * semantics, or if there are external dependencies on field settings
- * that cannot be updated.
+ * In field_purge_field_storage(), after the storage definition has been removed
+ * from the system, the entity storage has purged stored field data, and the
+ * field definitions cache has been cleared, this hook is invoked on all modules
+ * to allow them to respond to the field storage being purged.
  *
- * To forbid the update from occurring, throw a
- * Drupal\field\FieldUpdateForbiddenException.
- *
- * @param $field
- *   The field as it will be post-update.
- * @param $prior_field
- *   The field as it is pre-update.
+ * @param $field_storage \Drupal\field\Entity\FieldStorageConfig
+ *   The field storage being purged.
  */
-function hook_field_update_forbid($field, $prior_field) {
-  // A 'list' field stores integer keys mapped to display values. If
-  // the new field will have fewer values, and any data exists for the
-  // abandoned keys, the field will have no way to display them. So,
-  // forbid such an update.
-  if ($field->hasData() && count($field['settings']['allowed_values']) < count($prior_field['settings']['allowed_values'])) {
-    // Identify the keys that will be lost.
-    $lost_keys = array_diff(array_keys($field['settings']['allowed_values']), array_keys($prior_field['settings']['allowed_values']));
-    // If any data exist for those keys, forbid the update.
-    $query = new EntityFieldQuery();
-    $found = $query
-      ->fieldCondition($prior_field['field_name'], 'value', $lost_keys)
-      ->range(0, 1)
-      ->execute();
-    if ($found) {
-      throw new FieldUpdateForbiddenException("Cannot update a list field not to include keys with existing data");
-    }
-  }
+function hook_field_purge_field_storage(\Drupal\field\Entity\FieldStorageConfig $field_storage) {
+  db_delete('my_module_field_storage_info')
+    ->condition('uuid', $field_storage->uuid())
+    ->execute();
 }
 
 /**
- * Acts when a field record is being purged.
+ * Acts when a field is being purged.
  *
- * In field_purge_field(), after the field definition has been removed from the
- * the system, the entity storage has purged stored field data, and the field
- * info cache has been cleared, this hook is invoked on all modules to allow
- * them to respond to the field being purged.
+ * In field_purge_field(), after the field definition has been removed
+ * from the the system, the entity storage has purged stored field data, and the
+ * field info cache has been cleared, this hook is invoked on all modules to
+ * allow them to respond to the field being purged.
  *
  * @param $field
  *   The field being purged.
  */
-function hook_field_purge_field($field) {
+function hook_field_purge_field(\Drupal\field\Entity\FieldConfig $field) {
   db_delete('my_module_field_info')
-    ->condition('id', $field['id'])
+    ->condition('id', $field->id())
     ->execute();
 }
 
 /**
- * Acts when a field instance is being purged.
- *
- * In field_purge_instance(), after the instance definition has been removed
- * from the the system, the entity storage has purged stored field data, and the
- * field info cache has been cleared, this hook is invoked on all modules to
- * allow them to respond to the field instance being purged.
- *
- * @param $instance
- *   The instance being purged.
- */
-function hook_field_purge_instance($instance) {
-  db_delete('my_module_field_instance_info')
-    ->condition('id', $instance['id'])
-    ->execute();
-}
-
-/**
- * @} End of "addtogroup field_crud".
+ * @} End of "addtogroup field_purge".
  */
 
 /**

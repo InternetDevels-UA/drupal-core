@@ -7,11 +7,11 @@
 
 namespace Drupal\Core\Controller;
 
+use Drupal\Core\Routing\RouteMatch;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Controller\ControllerResolver as BaseControllerResolver;
-use Symfony\Component\HttpKernel\Log\LoggerInterface;
-use Symfony\Component\DependencyInjection\ContainerAwareInterface;
-use Symfony\Component\DependencyInjection\ContainerInterface;
+use Drupal\Core\DependencyInjection\ClassResolverInterface;
 
 /**
  * ControllerResolver to enhance controllers beyond Symfony's basic handling.
@@ -31,13 +31,6 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 class ControllerResolver extends BaseControllerResolver implements ControllerResolverInterface {
 
   /**
-   * The injection container that should be injected into all controllers.
-   *
-   * @var Symfony\Component\DependencyInjection\ContainerInterface
-   */
-  protected $container;
-
-  /**
    * The PSR-3 logger. (optional)
    *
    * @var \Psr\Log\LoggerInterface;
@@ -45,15 +38,22 @@ class ControllerResolver extends BaseControllerResolver implements ControllerRes
   protected $logger;
 
   /**
+   * The class resolver.
+   *
+   * @var \Drupal\Core\DependencyInjection\ClassResolverInterface
+   */
+  protected $classResolver;
+
+  /**
    * Constructs a new ControllerResolver.
    *
-   * @param Symfony\Component\DependencyInjection\ContainerInterface $container
-   *   A ContainerInterface instance.
-   * @param Symfony\Component\HttpKernel\Log\LoggerInterface $logger
+   * @param \Drupal\Core\DependencyInjection\ClassResolverInterface $class_resolver
+   *   The class resolver.
+   * @param \Psr\Log\LoggerInterface $logger
    *   (optional) A LoggerInterface instance.
    */
-  public function __construct(ContainerInterface $container, LoggerInterface $logger = NULL) {
-    $this->container = $container;
+  public function __construct(ClassResolverInterface $class_resolver, LoggerInterface $logger = NULL) {
+    $this->classResolver = $class_resolver;
 
     parent::__construct($logger);
   }
@@ -118,31 +118,17 @@ class ControllerResolver extends BaseControllerResolver implements ControllerRes
     // Controller in the service:method notation.
     $count = substr_count($controller, ':');
     if ($count == 1) {
-      list($service, $method) = explode(':', $controller, 2);
-      return array($this->container->get($service), $method);
+      list($class_or_service, $method) = explode(':', $controller, 2);
     }
-
     // Controller in the class::method notation.
-    if (strpos($controller, '::') !== FALSE) {
-      list($class, $method) = explode('::', $controller, 2);
-      if (!class_exists($class)) {
-        throw new \InvalidArgumentException(sprintf('Class "%s" does not exist.', $class));
-      }
-      // @todo Remove the second in_array() once that interface has been removed.
-      if (in_array('Drupal\Core\DependencyInjection\ContainerInjectionInterface', class_implements($class))) {
-        $controller = $class::create($this->container);
-      }
-      else {
-        $controller = new $class();
-      }
+    elseif (strpos($controller, '::') !== FALSE) {
+      list($class_or_service, $method) = explode('::', $controller, 2);
     }
     else {
       throw new \LogicException(sprintf('Unable to parse the controller name "%s".', $controller));
     }
 
-    if ($controller instanceof ContainerAwareInterface) {
-      $controller->setContainer($this->container);
-    }
+    $controller = $this->classResolver->getInstanceFromDefinition($class_or_service);
 
     return array($controller, $method);
   }
@@ -151,7 +137,35 @@ class ControllerResolver extends BaseControllerResolver implements ControllerRes
    * {@inheritdoc}
    */
   protected function doGetArguments(Request $request, $controller, array $parameters) {
-    $arguments = parent::doGetArguments($request, $controller, $parameters);
+    $attributes = $request->attributes->all();
+    $arguments = array();
+    foreach ($parameters as $param) {
+      if (array_key_exists($param->name, $attributes)) {
+        $arguments[] = $attributes[$param->name];
+      }
+      elseif ($param->getClass() && $param->getClass()->isInstance($request)) {
+        $arguments[] = $request;
+      }
+      elseif ($param->getClass() && ($param->getClass()->name == 'Drupal\Core\Routing\RouteMatchInterface' || is_subclass_of($param->getClass()->name, 'Drupal\Core\Routing\RouteMatchInterface'))) {
+        $arguments[] = RouteMatch::createFromRequest($request);
+      }
+      elseif ($param->isDefaultValueAvailable()) {
+        $arguments[] = $param->getDefaultValue();
+      }
+      else {
+        if (is_array($controller)) {
+          $repr = sprintf('%s::%s()', get_class($controller[0]), $controller[1]);
+        }
+        elseif (is_object($controller)) {
+          $repr = get_class($controller);
+        }
+        else {
+          $repr = $controller;
+        }
+
+        throw new \RuntimeException(sprintf('Controller "%s" requires that you provide a value for the "$%s" argument (because there is no default value or because there is a non optional argument after this one).', $repr, $param->name));
+      }
+    }
 
     // The parameter converter overrides the raw request attributes with the
     // upcasted objects. However, it keeps a backup copy of the original, raw

@@ -7,9 +7,6 @@
  */
 #toolbar-administration,
 #toolbar-administration * {
-  -moz-box-sizing: border-box;
-  -o-box-sizing: border-box;
-  -webkit-box-sizing: border-box;
   box-sizing: border-box;
 }
 #toolbar-administration {
@@ -37,6 +34,9 @@
 .toolbar .toolbar-bar .toolbar-tab,
 .toolbar .menu li {
   display: block;
+}
+.toolbar .toolbar-bar .toolbar-tab.hidden {
+  display: none;
 }
 .toolbar a {
   display: block;
@@ -161,7 +161,7 @@ body.toolbar-tray-open.toolbar-fixed.toolbar-vertical .toolbar-oriented {
   position: fixed;
   top: 0;
   width: 240px;
-  width: 15rem;
+  width: 14rem;
   z-index: -1;
 }
 [dir="rtl"] .toolbar .toolbar-tray-vertical > .toolbar-lining:before {

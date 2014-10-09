@@ -8,8 +8,9 @@
 namespace Drupal\Core\Access;
 
 use Drupal\Core\Controller\ControllerResolverInterface;
+use Drupal\Core\Routing\Access\AccessInterface as RoutingAccessInterface;
+use Drupal\Core\Routing\RouteMatchInterface;
 use Drupal\Core\Session\AccountInterface;
-use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Route;
 
 /**
@@ -22,7 +23,7 @@ use Symfony\Component\Routing\Route;
  * cannot reuse any stored property of your actual controller instance used
  * to generate the output.
  */
-class CustomAccessCheck implements StaticAccessCheckInterface {
+class CustomAccessCheck implements RoutingAccessInterface {
 
   /**
    * The controller resolver.
@@ -32,32 +33,42 @@ class CustomAccessCheck implements StaticAccessCheckInterface {
   protected $controllerResolver;
 
   /**
+   * The arguments resolver.
+   *
+   * @var \Drupal\Core\Access\AccessArgumentsResolverFactoryInterface
+   */
+  protected $argumentsResolverFactory;
+
+  /**
    * Constructs a CustomAccessCheck instance.
    *
    * @param \Drupal\Core\Controller\ControllerResolverInterface $controller_resolver
    *   The controller resolver.
+   * @param \Drupal\Core\Access\AccessArgumentsResolverFactoryInterface $arguments_resolver_factory
+   *   The arguments resolver factory.
    */
-  public function __construct(ControllerResolverInterface $controller_resolver) {
+  public function __construct(ControllerResolverInterface $controller_resolver, AccessArgumentsResolverFactoryInterface $arguments_resolver_factory) {
     $this->controllerResolver = $controller_resolver;
+    $this->argumentsResolverFactory = $arguments_resolver_factory;
   }
 
   /**
-   * {@inheritdoc}
+   * Checks access for the account and route using the custom access checker.
+   *
+   * @param \Drupal\Core\Routing\RouteMatchInterface $route_match
+   *   The route match object to be checked.
+   * @param \Drupal\Core\Session\AccountInterface $account
+   *   The account being checked.
+   *
+   * @return \Drupal\Core\Access\AccessResultInterface
+   *   The access result.
    */
-  public function appliesTo() {
-    return array('_custom_access');
-  }
+  public function access(Route $route, RouteMatchInterface $route_match, AccountInterface $account) {
+    $callable = $this->controllerResolver->getControllerFromDefinition($route->getRequirement('_custom_access'));
+    $arguments_resolver = $this->argumentsResolverFactory->getArgumentsResolver($route_match, $account);
+    $arguments = $arguments_resolver->getArguments($callable);
 
-  /**
-   * {@inheritdoc}
-   */
-  public function access(Route $route, Request $request, AccountInterface $account) {
-    $access_controller = $route->getRequirement('_custom_access');
-
-    $controller = $this->controllerResolver->getControllerFromDefinition($access_controller);
-    $arguments = $this->controllerResolver->getArguments($request, $controller);
-
-    return call_user_func_array($controller, $arguments);
+    return call_user_func_array($callable, $arguments);
   }
 
 }

@@ -12,16 +12,10 @@ use Drupal\Tests\UnitTestCase;
 
 /**
  * Tests the Drupal\Core\Template\Attribute functionality.
+ *
+ * @group Common
  */
 class AttributesTest extends UnitTestCase {
-
-  public static function getInfo() {
-    return array(
-      'name' => 'HTML Attributes',
-      'description' => 'Tests the Drupal\Core\Template\Attribute functionality.',
-      'group' => 'Common',
-    );
-  }
 
   /**
    * Provides data for the Attribute test.
@@ -40,7 +34,7 @@ class AttributesTest extends UnitTestCase {
       array(array('disabled' => FALSE), '', 'Boolean attribute is not rendered.'),
       // Verify empty attribute values are rendered.
       array(array('alt' => ''), ' alt=""', 'Empty attribute value #1.'),
-      array(array('alt' => NULL), ' alt=""', 'Empty attribute value #2.'),
+      array(array('alt' => NULL), '', 'Null attribute value #2.'),
       // Verify multiple attributes are rendered.
       array(
         array(

@@ -30,17 +30,15 @@ interface LocalActionInterface {
    *
    * @return array
    *   An array of parameter names and values.
-   *
-   * @see \Drupal\Core\Utility\LinkGeneratorInterface::generate()
    */
   public function getRouteParameters(Request $request);
 
-   /**
-    * Returns the weight for the local action.
-    *
-    * @return int
-    */
-   public function getWeight();
+  /**
+   * Returns the weight for the local action.
+   *
+   * @return int
+   */
+  public function getWeight();
 
   /**
    * Returns options for rendering a link for the local action.
@@ -50,8 +48,6 @@ interface LocalActionInterface {
    *
    * @return array
    *   An associative array of options.
-   *
-   * @see \Drupal\Core\Utility\LinkGeneratorInterface::generate()
    */
   public function getOptions(Request $request);
 

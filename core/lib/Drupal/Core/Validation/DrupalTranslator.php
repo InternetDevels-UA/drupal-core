@@ -7,7 +7,6 @@
 
 namespace Drupal\Core\Validation;
 
-use Drupal\Core\Language\Language;
 use Symfony\Component\Translation\TranslatorInterface;
 
 /**
@@ -56,7 +55,7 @@ class DrupalTranslator implements TranslatorInterface {
    * Implements \Symfony\Component\Translation\TranslatorInterface::getLocale().
    */
   public function getLocale() {
-    return $this->locale ? $this->locale : language(Language::TYPE_INTERFACE)->id;
+    return $this->locale ? $this->locale : \Drupal::languageManager()->getCurrentLanguage()->id;
   }
 
   /**

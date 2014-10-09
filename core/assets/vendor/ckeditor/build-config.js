@@ -15,14 +15,24 @@ var CKBUILDER_CONFIG = {
 	ignore: [
 		// CKEditor repository structure: unrelated to the usage of CKEditor itself.
 		'dev',
-		'.mailmap',
+		'README.md',
 		'.gitignore',
 		'.gitattributes',
+		'.idea',
+		'.mailmap',
+		'.DS_Store',
+		'tests',
+		'package.json',
+		'bender.js',
+		'.bender',
+		'bender-err.log',
+		'bender-out.log',
+		'node_modules',
 		// Parts of CKEditor that we consciously don't ship with Drupal.
 		'adapters',
-		'README.md',
 		'config.js',
 		'contents.css',
+		'Gruntfile.js',
 		'styles.js',
 		'samples',
 		'skins/moono/readme.md'
@@ -66,6 +76,7 @@ var CKBUILDER_CONFIG = {
 		'tableresize' : 1,
 		'sharedspace' : 1,
 		'sourcedialog' : 1,
-		'widget' : 1
+		'widget' : 1,
+		'image2' : 1
 	}
 };

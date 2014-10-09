@@ -7,8 +7,7 @@
 
 namespace Drupal\Core\Form;
 
-use Drupal\Core\Config\ConfigFactory;
-use Drupal\Core\Config\Context\ContextInterface;
+use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Form\FormBase;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
@@ -18,23 +17,13 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 abstract class ConfigFormBase extends FormBase {
 
   /**
-   * Stores the configuration factory.
-   *
-   * @var \Drupal\Core\Config\ConfigFactory
-   */
-  protected $configFactory;
-
-  /**
    * Constructs a \Drupal\system\ConfigFormBase object.
    *
-   * @param \Drupal\Core\Config\ConfigFactory $config_factory
+   * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
    *   The factory for configuration objects.
-   * @param \Drupal\Core\Config\Context\ContextInterface $context
-   *   The configuration context to use.
    */
-  public function __construct(ConfigFactory $config_factory, ContextInterface $context) {
-    $this->configFactory = $config_factory;
-    $this->configFactory->enterContext($context);
+  public function __construct(ConfigFactoryInterface $config_factory) {
+    $this->setConfigFactory($config_factory);
   }
 
   /**
@@ -42,15 +31,14 @@ abstract class ConfigFormBase extends FormBase {
    */
   public static function create(ContainerInterface $container) {
     return new static(
-      $container->get('config.factory'),
-      $container->get('config.context.free')
+      $container->get('config.factory')
     );
   }
 
   /**
-   * Implements \Drupal\Core\Form\FormInterface::buildForm().
+   * {@inheritdoc}
    */
-  public function buildForm(array $form, array &$form_state) {
+  public function buildForm(array $form, FormStateInterface $form_state) {
     $form['actions']['#type'] = 'actions';
     $form['actions']['submit'] = array(
       '#type' => 'submit',
@@ -65,21 +53,26 @@ abstract class ConfigFormBase extends FormBase {
   }
 
   /**
-   * Implements \Drupal\Core\Form\FormInterface::submitForm().
+   * {@inheritdoc}
    */
-  public function submitForm(array &$form, array &$form_state) {
+  public function submitForm(array &$form, FormStateInterface $form_state) {
     drupal_set_message($this->t('The configuration options have been saved.'));
   }
 
   /**
    * {@inheritdoc}
+   *
+   * Overrides \Drupal\Core\Form\FormBase::config() so that configuration is
+   * returned override free. This ensures that overrides do not pollute saved
+   * configuration.
    */
   protected function config($name) {
-    if (!$this->configFactory) {
-      $container = $this->container();
-      $this->configFactory = $container->get('config.factory');
-      $this->configFactory->enterContext($container->get('config.context.free'));
-    }
-    return $this->configFactory->get($name);
+    $config_factory = $this->configFactory();
+    $old_state = $config_factory->getOverrideState();
+    $config_factory->setOverrideState(FALSE);
+    $config = $config_factory->get($name);
+    $config_factory->setOverrideState($old_state);
+    return $config;
   }
+
 }

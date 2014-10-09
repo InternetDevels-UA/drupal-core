@@ -7,12 +7,14 @@
 
 namespace Drupal\Core\Annotation;
 
-use Drupal\Component\Annotation\AnnotationInterface;
+use Drupal\Component\Annotation\AnnotationBase;
+use Drupal\Core\StringTranslation\TranslationWrapper;
 
 /**
- * @defgroup plugin_translatable Translatable plugin metadata
- *
+ * @defgroup plugin_translatable Annotation for translatable text
  * @{
+ * Describes how to put translatable UI text into annotations.
+ *
  * When providing plugin annotation, properties whose values are displayed in
  * the user interface should be made translatable. Much the same as how user
  * interface text elsewhere is wrapped in t() to make it translatable, in plugin
@@ -24,9 +26,9 @@ use Drupal\Component\Annotation\AnnotationInterface;
  * Remove spaces after @ in your actual plugin - these are put into this sample
  * code so that it is not recognized as annotation.
  *
- * You will also need to make sure that your class file includes the line:
+ * To provide replacement values for placeholders, use the "arguments" array:
  * @code
- *   use Drupal\Core\Annotation\Translation;
+ *   title = @ Translation("Bundle !title", arguments = {"!title" = "Foo"}),
  * @endcode
  *
  * It is also possible to provide a context with the text, similar to t():
@@ -35,6 +37,9 @@ use Drupal\Component\Annotation\AnnotationInterface;
  * @endcode
  * Other t() arguments like language code are not valid to pass in. Only
  * context is supported.
+ *
+ * @see i18n
+ * @see annotation
  * @}
  */
 
@@ -46,38 +51,46 @@ use Drupal\Component\Annotation\AnnotationInterface;
  * specified, a context for that string. The string (with optional context)
  * is passed into t().
  *
- * @Annotation
- *
  * @ingroup plugin_translatable
+ *
+ * @Annotation
  */
-class Translation implements AnnotationInterface {
+class Translation extends AnnotationBase {
 
   /**
-   * The translation of the value passed to the constructor of the class.
+   * The string translation object.
    *
-   * @var string
+   * @var \Drupal\Core\StringTranslation\TranslationWrapper
    */
   protected $translation;
 
   /**
-   * Constructs a Translation object.
+   * Constructs a new class instance.
    *
    * Parses values passed into this class through the t() function in Drupal and
    * handles an optional context for the string.
+   *
+   * @param array $values
+   *   Possible array keys:
+   *   - value (required): the string that is to be translated.
+   *   - arguments (optional): an array with placeholder replacements, keyed by
+   *     placeholder.
+   *   - context (optional): a string that describes the context of "value";
    */
-  public function __construct($values) {
+  public function __construct(array $values) {
     $string = $values['value'];
+    $arguments = isset($values['arguments']) ? $values['arguments'] : array();
     $options = array();
     if (!empty($values['context'])) {
       $options = array(
         'context' => $values['context'],
       );
     }
-    $this->translation = t($string, array(), $options);
+    $this->translation = new TranslationWrapper($string, $arguments, $options);
   }
 
   /**
-   * Implements Drupal\Core\Annotation\AnnotationInterface::get().
+   * {@inheritdoc}
    */
   public function get() {
     return $this->translation;

@@ -8,6 +8,8 @@
 namespace Drupal\Core\Routing;
 
 use Drupal\Component\Utility\String;
+use Drupal\Core\State\StateInterface;
+use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Exception\RouteNotFoundException;
 use Symfony\Component\Routing\RouteCollection;
@@ -18,7 +20,7 @@ use \Drupal\Core\Database\Connection;
 /**
  * A Route Provider front-end for all Drupal-stored routes.
  */
-class RouteProvider implements RouteProviderInterface {
+class RouteProvider implements RouteProviderInterface, EventSubscriberInterface {
 
   /**
    * The database connection from which to read route information.
@@ -35,6 +37,20 @@ class RouteProvider implements RouteProviderInterface {
   protected $tableName;
 
   /**
+   * The route builder.
+   *
+   * @var \Drupal\Core\Routing\RouteBuilderInterface
+   */
+  protected $routeBuilder;
+
+  /**
+   * The state.
+   *
+   * @var \Drupal\Core\State\StateInterface
+   */
+  protected $state;
+
+  /**
    * A cache of already-loaded routes, keyed by route name.
    *
    * @var array
@@ -46,11 +62,17 @@ class RouteProvider implements RouteProviderInterface {
    *
    * @param \Drupal\Core\Database\Connection $connection
    *   A database connection object.
+   * @param \Drupal\Core\Routing\RouteBuilderInterface $route_builder
+   *   The route builder.
+   * @param \Drupal\Core\State\StateInterface $state
+   *   The state.
    * @param string $table
    *   The table in the database to use for matching.
    */
-  public function __construct(Connection $connection, $table = 'router') {
+  public function __construct(Connection $connection, RouteBuilderInterface $route_builder, StateInterface $state, $table = 'router') {
     $this->connection = $connection;
+    $this->routeBuilder = $route_builder;
+    $this->state = $state;
     $this->tableName = $table;
   }
 
@@ -99,8 +121,9 @@ class RouteProvider implements RouteProviderInterface {
 
     $collection = $this->getRoutesByPath($path);
 
-    if (!count($collection)) {
-      throw new ResourceNotFoundException(String::format("The route for '@path' could not be found", array('@path' => $path)));
+    // Try rebuilding the router if it is necessary.
+    if (!$collection->count() && $this->routeBuilder->rebuildIfNeeded()) {
+      $collection = $this->getRoutesByPath($path);
     }
 
     return $collection;
@@ -111,9 +134,6 @@ class RouteProvider implements RouteProviderInterface {
    *
    * @param string $name
    *   The route name to fetch
-   * @param array $parameters
-   *   The parameters as they are passed to the UrlGeneratorInterface::generate
-   *   call.
    *
    * @return \Symfony\Component\Routing\Route
    *   The found route.
@@ -121,8 +141,8 @@ class RouteProvider implements RouteProviderInterface {
    * @throws \Symfony\Component\Routing\Exception\RouteNotFoundException
    *   Thrown if there is no route with that name in this repository.
    */
-  public function getRouteByName($name, $parameters = array()) {
-    $routes = $this->getRoutesByNames(array($name), $parameters);
+  public function getRouteByName($name) {
+    $routes = $this->getRoutesByNames(array($name));
     if (empty($routes)) {
       throw new RouteNotFoundException(sprintf('Route "%s" does not exist.', $name));
     }
@@ -142,14 +162,11 @@ class RouteProvider implements RouteProviderInterface {
    *
    * @param array $names
    *   The list of names to retrieve.
-   * @param array $parameters
-   *   The parameters as they are passed to the UrlGeneratorInterface::generate
-   *   call. (Only one array, not one for each entry in $names).
    *
    * @return \Symfony\Component\Routing\Route[]
    *   Iterable thing with the keys the names of the $names argument.
    */
-  public function getRoutesByNames($names, $parameters = array()) {
+  public function getRoutesByNames($names) {
 
     if (empty($names)) {
       throw new \InvalidArgumentException('You must specify the route names to load');
@@ -181,12 +198,29 @@ class RouteProvider implements RouteProviderInterface {
   public function getCandidateOutlines(array $parts) {
     $number_parts = count($parts);
     $ancestors = array();
-    $length =  $number_parts - 1;
+    $length = $number_parts - 1;
     $end = (1 << $number_parts) - 1;
 
     // The highest possible mask is a 1 bit for every part of the path. We will
     // check every value down from there to generate a possible outline.
-    $masks = range($end, 0);
+    if ($number_parts == 1) {
+      $masks = array(1);
+    }
+    elseif ($number_parts <= 3) {
+      // Optimization - don't query the state system for short paths. This also
+      // insulates against the state entry for masks going missing for common
+      // user-facing paths since we generate all values without checking state.
+      $masks = range($end, 1);
+    }
+    elseif ($number_parts <= 0) {
+      // No path can match, short-circuit the process.
+      $masks = array();
+    }
+    else {
+      // Get the actual patterns that exist out of state.
+      $masks = (array) $this->state->get('routing.menu_masks.' . $this->tableName, array());
+    }
+
 
     // Only examine patterns that actually exist as router items (the masks).
     foreach ($masks as $i) {
@@ -240,18 +274,22 @@ class RouteProvider implements RouteProviderInterface {
   protected function getRoutesByPath($path) {
     // Filter out each empty value, though allow '0' and 0, which would be
     // filtered out by empty().
-    $parts = array_slice(array_filter(explode('/', $path), function($value) {
+    $parts = array_values(array_filter(explode('/', $path), function($value) {
       return $value !== NULL && $value !== '';
-    }), 0, MatcherDumper::MAX_PARTS);
+    }));
+
+    $collection = new RouteCollection();
 
     $ancestors = $this->getCandidateOutlines($parts);
+    if (empty($ancestors)) {
+      return $collection;
+    }
 
-    $routes = $this->connection->query("SELECT name, route FROM {" . $this->connection->escapeTable($this->tableName) . "} WHERE pattern_outline IN (:patterns) ORDER BY fit DESC", array(
+    $routes = $this->connection->query("SELECT name, route FROM {" . $this->connection->escapeTable($this->tableName) . "} WHERE pattern_outline IN (:patterns) ORDER BY fit DESC, name ASC", array(
       ':patterns' => $ancestors,
     ))
       ->fetchAllKeyed();
 
-    $collection = new RouteCollection();
     foreach ($routes as $name => $route) {
       $route = unserialize($route);
       if (preg_match($route->compile()->getRegex(), $path, $matches)) {
@@ -260,6 +298,28 @@ class RouteProvider implements RouteProviderInterface {
     }
 
     return $collection;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getAllRoutes() {
+    return new LazyLoadingRouteCollection($this->connection, $this->tableName);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function reset() {
+    $this->routes  = array();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  static function getSubscribedEvents() {
+    $events[RoutingEvents::FINISHED][] = array('reset');
+    return $events;
   }
 
 }

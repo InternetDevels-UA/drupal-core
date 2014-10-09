@@ -10,11 +10,12 @@ namespace Drupal\Core\Field;
 use Drupal\Component\Plugin\Factory\DefaultFactory;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
-use Drupal\Core\Language\LanguageManager;
 use Drupal\Core\Plugin\DefaultPluginManager;
 
 /**
  * Plugin type manager for field formatters.
+ *
+ * @ingroup field_formatter
  */
 class FormatterPluginManager extends DefaultPluginManager {
 
@@ -28,7 +29,7 @@ class FormatterPluginManager extends DefaultPluginManager {
   /**
    * The field type manager to define field.
    *
-   * @var \Drupal\Core\Field\FieldTypePluginManager
+   * @var \Drupal\Core\Field\FieldTypePluginManagerInterface
    */
   protected $fieldTypeManager;
 
@@ -42,24 +43,21 @@ class FormatterPluginManager extends DefaultPluginManager {
    *   Cache backend instance to use.
    * @param \Drupal\Core\Extension\ModuleHandlerInterface $module_handler
    *   The module handler.
-   * @param \Drupal\Core\Language\LanguageManager $language_manager
-   *   The language manager.
-   * @param \Drupal\Core\Field\FieldTypePluginManager $field_type_manager
+   * @param \Drupal\Core\Field\FieldTypePluginManagerInterface $field_type_manager
    *   The 'field type' plugin manager.
    */
-  public function __construct(\Traversable $namespaces, CacheBackendInterface $cache_backend, ModuleHandlerInterface $module_handler, LanguageManager $language_manager, FieldTypePluginManager $field_type_manager) {
+  public function __construct(\Traversable $namespaces, CacheBackendInterface $cache_backend, ModuleHandlerInterface $module_handler, FieldTypePluginManagerInterface $field_type_manager) {
+    parent::__construct('Plugin/Field/FieldFormatter', $namespaces, $module_handler, 'Drupal\Core\Field\FormatterInterface', 'Drupal\Core\Field\Annotation\FieldFormatter');
 
-    parent::__construct('Plugin/Field/FieldFormatter', $namespaces, 'Drupal\Core\Field\Annotation\FieldFormatter');
-
-    $this->setCacheBackend($cache_backend, $language_manager, 'field_formatter_types_plugins');
-    $this->alterInfo($module_handler, 'field_formatter_info');
+    $this->setCacheBackend($cache_backend, 'field_formatter_types_plugins');
+    $this->alterInfo('field_formatter_info');
     $this->fieldTypeManager = $field_type_manager;
   }
 
   /**
    * {@inheritdoc}
    */
-  public function createInstance($plugin_id, array $configuration) {
+  public function createInstance($plugin_id, array $configuration = array()) {
     $plugin_definition = $this->getDefinition($plugin_id);
     $plugin_class = DefaultFactory::getPluginClass($plugin_id, $plugin_definition);
 
@@ -71,7 +69,7 @@ class FormatterPluginManager extends DefaultPluginManager {
       return $plugin_class::create(\Drupal::getContainer(), $configuration, $plugin_id, $plugin_definition);
     }
 
-    return new $plugin_class($plugin_id, $plugin_definition, $configuration['field_definition'], $configuration['settings'], $configuration['label'], $configuration['view_mode']);
+    return new $plugin_class($plugin_id, $plugin_definition, $configuration['field_definition'], $configuration['settings'], $configuration['label'], $configuration['view_mode'], $configuration['third_party_settings']);
   }
 
   /**
@@ -94,14 +92,16 @@ class FormatterPluginManager extends DefaultPluginManager {
    *       also be used if the requested formatter is not available.
    *     - settings: (array) Settings specific to the formatter. Each setting
    *       defaults to the default value specified in the formatter definition.
+   *     - third_party_settings: (array) Settings provided by other extensions
+   *       through hook_field_formatter_third_party_settings_form().
    *
-   * @return \Drupal\Core\Field\FormatterInterface
-   *   A formatter object.
+   * @return \Drupal\Core\Field\FormatterInterface|null
+   *   A formatter object or NULL when plugin is not found.
    */
   public function getInstance(array $options) {
     $configuration = $options['configuration'];
     $field_definition = $options['field_definition'];
-    $field_type = $field_definition->getFieldType();
+    $field_type = $field_definition->getType();
 
     // Fill in default configuration if needed.
     if (!isset($options['prepare']) || $options['prepare'] == TRUE) {
@@ -111,12 +111,16 @@ class FormatterPluginManager extends DefaultPluginManager {
     $plugin_id = $configuration['type'];
 
     // Switch back to default formatter if either:
-    // - $type_info doesn't exist (the widget type is unknown),
-    // - the field type is not allowed for the widget.
-    $definition = $this->getDefinition($configuration['type']);
-    if (!isset($definition['class']) || !in_array($field_type, $definition['field_types'])) {
+    // - the configuration does not specify a formatter class
+    // - the field type is not allowed for the formatter
+    // - the formatter is not applicable to the field definition.
+    $definition = $this->getDefinition($configuration['type'], FALSE);
+    if (!isset($definition['class']) || !in_array($field_type, $definition['field_types']) || !$definition['class']::isApplicable($field_definition)) {
       // Grab the default widget for the field type.
       $field_type_definition = $this->fieldTypeManager->getDefinition($field_type);
+      if (empty($field_type_definition['default_formatter'])) {
+        return NULL;
+      }
       $plugin_id = $field_type_definition['default_formatter'];
     }
 
@@ -143,6 +147,7 @@ class FormatterPluginManager extends DefaultPluginManager {
     $configuration += array(
       'label' => 'above',
       'settings' => array(),
+      'third_party_settings' => array(),
     );
     // If no formatter is specified, use the default formatter.
     if (!isset($configuration['type'])) {
@@ -167,13 +172,15 @@ class FormatterPluginManager extends DefaultPluginManager {
    */
   public function getOptions($field_type = NULL) {
     if (!isset($this->formatterOptions)) {
-      $field_types = $this->fieldTypeManager->getDefinitions();
       $options = array();
-      foreach ($this->getDefinitions() as $name => $formatter) {
-        foreach ($formatter['field_types'] as $formatter_field_type) {
+      $field_types = $this->fieldTypeManager->getDefinitions();
+      $formatter_types = $this->getDefinitions();
+      uasort($formatter_types, array('Drupal\Component\Utility\SortArray', 'sortByWeightElement'));
+      foreach ($formatter_types as $name => $formatter_type) {
+        foreach ($formatter_type['field_types'] as $formatter_field_type) {
           // Check that the field type exists.
           if (isset($field_types[$formatter_field_type])) {
-            $options[$formatter_field_type][$name] = $formatter['label'];
+            $options[$formatter_field_type][$name] = $formatter_type['label'];
           }
         }
       }
@@ -196,8 +203,12 @@ class FormatterPluginManager extends DefaultPluginManager {
    *   definition, or an empty array if type or settings are undefined.
    */
   public function getDefaultSettings($type) {
-    $info = $this->getDefinition($type);
-    return isset($info['settings']) ? $info['settings'] : array();
+    $plugin_definition = $this->getDefinition($type, FALSE);
+    if (!empty($plugin_definition['class'])) {
+      $plugin_class = DefaultFactory::getPluginClass($type, $plugin_definition);
+      return $plugin_class::defaultSettings();
+    }
+    return array();
   }
 
 }

@@ -2,7 +2,7 @@
 
 /**
  * @file
- * Definition of Drupal\Core\Template\AttributeValueBase.
+ * Contains \Drupal\Core\Template\AttributeValueBase.
  */
 
 namespace Drupal\Core\Template;
@@ -17,11 +17,11 @@ use Drupal\Component\Utility\String;
 abstract class AttributeValueBase {
 
   /**
-   * Whether this attribute hsa been printed already.
+   * Renders '$name=""' if $value is an empty string.
    *
-   * @var bool
+   * @see \Drupal\Core\Template\AttributeValueBase::render()
    */
-  protected $printed = FALSE;
+  const RENDER_EMPTY_ATTRIBUTE = TRUE;
 
   /**
    * The value itself.
@@ -55,17 +55,10 @@ abstract class AttributeValueBase {
    *   The string representation of the attribute.
    */
   public function render() {
-    return String::checkPlain($this->name) . '="' . $this . '"';
-  }
-
-  /**
-   * Whether this attribute hsa been printed already.
-   *
-   * @return bool
-   *   TRUE if this attribute has been printed, FALSE otherwise.
-   */
-  public function printed() {
-    return $this->printed;
+    $value = (string) $this;
+    if (isset($this->value) && static::RENDER_EMPTY_ATTRIBUTE || !empty($value)) {
+      return String::checkPlain($this->name) . '="' . $value . '"';
+    }
   }
 
   /**

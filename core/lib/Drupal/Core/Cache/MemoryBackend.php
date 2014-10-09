@@ -15,6 +15,7 @@ namespace Drupal\Core\Cache;
  * Should be used for unit tests and specialist use-cases only, does not
  * store cached items between requests.
  *
+ * @ingroup cache
  */
 class MemoryBackend implements CacheBackendInterface {
 
@@ -72,6 +73,9 @@ class MemoryBackend implements CacheBackendInterface {
    *
    * @param object $cache
    *   An item loaded from cache_get() or cache_get_multiple().
+   * @param bool $allow_invalid
+   *   (optional) If TRUE, cache items may be returned even if they have expired
+   *   or been invalidated.
    *
    * @return mixed
    *   The item with data as appropriate or FALSE if there is no
@@ -81,28 +85,48 @@ class MemoryBackend implements CacheBackendInterface {
     if (!isset($cache->data)) {
       return FALSE;
     }
+    // The object passed into this function is the one stored in $this->cache.
+    // We must clone it as part of the preparation step so that the actual
+    // cache object is not affected by the unserialize() call or other
+    // manipulations of the returned object.
+
+    $prepared = clone $cache;
+    $prepared->data = unserialize($prepared->data);
 
     // Check expire time.
-    $cache->valid = $cache->expire == CacheBackendInterface::CACHE_PERMANENT || $cache->expire >= REQUEST_TIME;
+    $prepared->valid = $prepared->expire == Cache::PERMANENT || $prepared->expire >= REQUEST_TIME;
 
-    if (!$allow_invalid && !$cache->valid) {
+    if (!$allow_invalid && !$prepared->valid) {
       return FALSE;
     }
 
-    return $cache;
+    return $prepared;
   }
 
   /**
    * Implements Drupal\Core\Cache\CacheBackendInterface::set().
    */
-  public function set($cid, $data, $expire = CacheBackendInterface::CACHE_PERMANENT, array $tags = array()) {
+  public function set($cid, $data, $expire = Cache::PERMANENT, array $tags = array()) {
+    Cache::validateTags($tags);
+    $tags = array_unique($tags);
+    // Sort the cache tags so that they are stored consistently in the database.
+    sort($tags);
     $this->cache[$cid] = (object) array(
       'cid' => $cid,
-      'data' => $data,
+      'data' => serialize($data),
       'created' => REQUEST_TIME,
       'expire' => $expire,
-      'tags' => $this->flattenTags($tags),
+      'tags' => $tags,
     );
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function setMultiple(array $items = array()) {
+    foreach ($items as $cid => $item) {
+      $this->set($cid, $item['data'], isset($item['expire']) ? $item['expire'] : CacheBackendInterface::CACHE_PERMANENT, isset($item['tags']) ? $item['tags'] : array());
+    }
   }
 
   /**
@@ -123,9 +147,8 @@ class MemoryBackend implements CacheBackendInterface {
    * Implements Drupal\Core\Cache\CacheBackendInterface::deleteTags().
    */
   public function deleteTags(array $tags) {
-    $flat_tags = $this->flattenTags($tags);
     foreach ($this->cache as $cid => $item) {
-      if (array_intersect($flat_tags, $item->tags)) {
+      if (array_intersect($tags, $item->tags)) {
         unset($this->cache[$cid]);
       }
     }
@@ -160,9 +183,8 @@ class MemoryBackend implements CacheBackendInterface {
    * Implements Drupal\Core\Cache\CacheBackendInterface::invalidateTags().
    */
   public function invalidateTags(array $tags) {
-    $flat_tags = $this->flattenTags($tags);
     foreach ($this->cache as $cid => $item) {
-      if (array_intersect($flat_tags, $item->tags)) {
+      if (array_intersect($tags, $item->tags)) {
         $this->cache[$cid]->expire = REQUEST_TIME - 1;
       }
     }
@@ -178,49 +200,14 @@ class MemoryBackend implements CacheBackendInterface {
   }
 
   /**
-   * 'Flattens' a tags array into an array of strings.
-   *
-   * @param array $tags
-   *   Associative array of tags to flatten.
-   *
-   * @return array
-   *   An indexed array of strings.
-   */
-  protected function flattenTags(array $tags) {
-    if (isset($tags[0])) {
-      return $tags;
-    }
-
-    $flat_tags = array();
-    foreach ($tags as $namespace => $values) {
-      if (is_array($values)) {
-        foreach ($values as $value) {
-          $flat_tags["$namespace:$value"] = "$namespace:$value";
-        }
-      }
-      else {
-        $flat_tags["$namespace:$values"] = "$namespace:$values";
-      }
-    }
-    return $flat_tags;
-  }
-
-  /**
-   * Implements Drupal\Core\Cache\CacheBackendInterface::isEmpty().
-   */
-  public function isEmpty() {
-    return empty($this->cache);
-  }
-
-  /**
    * Implements Drupal\Core\Cache\CacheBackendInterface::garbageCollection()
    */
   public function garbageCollection() {
   }
 
- /**
-  * {@inheritdoc}
-  */
+  /**
+   * {@inheritdoc}
+   */
   public function removeBin() {}
 
 }

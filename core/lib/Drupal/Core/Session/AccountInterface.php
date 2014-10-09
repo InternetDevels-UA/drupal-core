@@ -12,6 +12,8 @@ namespace Drupal\Core\Session;
  *
  * Defines an object that has a user id, roles and can have session data. The
  * interface is implemented both by the global session and the user entity.
+ *
+ * @ingroup user_api
  */
 interface AccountInterface {
 
@@ -26,10 +28,13 @@ interface AccountInterface {
   /**
    * Returns a list of roles.
    *
+   * @param bool $exclude_locked_roles
+   *   (optional) If TRUE, locked roles (anonymous/authenticated) are not returned.
+   *
    * @return array
    *   List of role IDs.
    */
-  public function getRoles();
+  public function getRoles($exclude_locked_roles = FALSE);
 
   /**
    * Checks whether a user has a certain permission.
@@ -85,28 +90,34 @@ interface AccountInterface {
   /**
    * Returns the preferred language code of the account.
    *
-   * @param string $default
-   *   (optional) Default language code to return if the account
-   *   has no valid language, defaults to the site default language.
+   * @param bool $fallback_to_default
+   *   (optional) Whether the return value will fall back to the site default
+   *   language if the user has no language preference.
    *
    * @return string
-   *   The language code that is preferred by the account.
+   *   The language code that is preferred by the account. If the preferred
+   *   language is not set or is a language not configured anymore on the site,
+   *   the site default is returned or an empty string is returned (if
+   *   $fallback_to_default is FALSE).
    */
-  public function getPreferredLangcode($default = NULL);
+  public function getPreferredLangcode($fallback_to_default = TRUE);
 
   /**
    * Returns the preferred administrative language code of the account.
    *
    * Defines which language is used on administrative pages.
    *
-   * @param string $default
-   *   (optional) Default language code to return if the account
-   *   has no valid language, defaults to the site default language.
+   * @param bool $fallback_to_default
+   *   (optional) Whether the return value will fall back to the site default
+   *   language if the user has no administration language preference.
    *
    * @return string
-   *   The language code that is preferred by the account.
+   *   The language code that is preferred by the account for administration
+   *   pages. If the preferred language is not set or is a language not
+   *   configured anymore on the site, the site default is returned or an empty
+   *   string is returned (if $fallback_to_default is FALSE).
    */
-  public function getPreferredAdminLangcode($default = NULL);
+  public function getPreferredAdminLangcode($fallback_to_default = TRUE);
 
   /**
    * Returns the username of this account.
@@ -120,16 +131,17 @@ interface AccountInterface {
    *
    * @return
    *   An unsanitized string with the username to display. The code receiving
-   *   this result must ensure that check_plain() is called on it before it is
+   *   this result must ensure that \Drupal\Component\Utility\String::checkPlain()
+   *   is called on it before it is
    *   printed to the page.
    */
   public function getUsername();
 
   /**
-   * Returns the e-mail address of this account.
+   * Returns the email address of this account.
    *
    * @return string
-   *   The e-mail address.
+   *   The email address.
    */
   public function getEmail();
 
@@ -150,5 +162,12 @@ interface AccountInterface {
    *   Timestamp of the last access.
    */
   public function getLastAccessedTime();
+
+  /**
+   * Returns the session hostname.
+   *
+   * @return string
+   */
+  public function getHostname();
 
 }

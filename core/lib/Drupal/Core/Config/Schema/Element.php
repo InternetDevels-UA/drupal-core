@@ -25,7 +25,16 @@ abstract class Element extends TypedData {
    * Create typed config object.
    */
   protected function parseElement($key, $data, $definition) {
-    return config_typed()->create($definition, $data, $key, $this);
+    return \Drupal::service('config.typed')->create($definition, $data, $key, $this);
+  }
+
+  /**
+   * Build data definition object for contained elements.
+   *
+   * @return \Drupal\Core\TypedData\DataDefinitionInterface
+   */
+  protected function buildDataDefinition($definition, $value, $key) {
+    return  \Drupal::service('config.typed')->buildDataDefinition($definition, $value, $key, $this);
   }
 
 }

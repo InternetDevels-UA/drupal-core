@@ -6,6 +6,7 @@
  */
 
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Drupal\Core\Url;
 
 /**
  * Static Service Container wrapper.
@@ -79,12 +80,17 @@ class Drupal {
   /**
    * The current system version.
    */
-  const VERSION = '8.0-dev';
+  const VERSION = '8.0.0-dev';
 
   /**
    * Core API compatibility.
    */
   const CORE_COMPATIBILITY = '8.x';
+
+  /**
+   * Core minimum schema version.
+   */
+  const CORE_MINIMUM_SCHEMA_VERSION = 8000;
 
   /**
    * The currently active container object.
@@ -97,17 +103,19 @@ class Drupal {
    * Sets a new global container.
    *
    * @param \Symfony\Component\DependencyInjection\ContainerInterface $container
-   *   A new container instance to replace the current.
+   *   A new container instance to replace the current. NULL may be passed by
+   *   testing frameworks to ensure that the global state of a previous
+   *   environment does not leak into a test.
    */
-  public static function setContainer(ContainerInterface $container) {
+  public static function setContainer(ContainerInterface $container = NULL) {
     static::$container = $container;
   }
 
   /**
    * Returns the currently active global container.
    *
-   * @deprecated This method is only useful for the testing environment, and as
-   *   a BC shiv for drupal_container(). It should not be used otherwise.
+   * @deprecated This method is only useful for the testing environment. It
+   * should not be used otherwise.
    *
    * @return \Symfony\Component\DependencyInjection\ContainerInterface
    */
@@ -129,6 +137,29 @@ class Drupal {
    */
   public static function service($id) {
     return static::$container->get($id);
+  }
+
+  /**
+   * Indicates if a service is defined in the container.
+   *
+   * @param string $id
+   *   The ID of the service to check.
+   *
+   * @return bool
+   *   TRUE if the specified service exists, FALSE otherwise.
+   */
+  public static function hasService($id) {
+    return static::$container && static::$container->has($id);
+  }
+
+  /**
+   * Indicates if there is a currently active request object.
+   *
+   * @return bool
+   *   TRUE if there is a currently active request object, FALSE otherwise.
+   */
+  public static function hasRequest() {
+    return static::$container && static::$container->has('request_stack') && static::$container->get('request_stack')->getCurrentRequest() !== NULL;
   }
 
   /**
@@ -154,13 +185,33 @@ class Drupal {
    *   The currently active request object.
    */
   public static function request() {
-    return static::$container->get('request');
+    return static::$container->get('request_stack')->getCurrentRequest();
+  }
+
+  /**
+   * Retrives the request stack.
+   *
+   * @return \Symfony\Component\HttpFoundation\RequestStack
+   *   The request stack
+   */
+  public static function requestStack() {
+    return static::$container->get('request_stack');
+  }
+
+  /**
+   * Retrieves the currently active route match object.
+   *
+   * @return \Drupal\Core\Routing\RouteMatchInterface
+   *   The currently active route match object.
+   */
+  public static function routeMatch() {
+    return static::$container->get('current_route_match');
   }
 
   /**
    * Gets the current active user.
    *
-   * @return \Drupal\Core\Session\AccountInterface
+   * @return \Drupal\Core\Session\AccountProxyInterface
    */
   public static function currentUser() {
     return static::$container->get('current_user');
@@ -191,12 +242,14 @@ class Drupal {
    *
    * @param string $bin
    *   (optional) The cache bin for which the cache object should be returned,
-   *   defaults to 'cache'.
+   *   defaults to 'default'.
    *
    * @return \Drupal\Core\Cache\CacheBackendInterface
    *   The cache object associated with the specified bin.
+   *
+   * @ingroup cache
    */
-  public static function cache($bin = 'cache') {
+  public static function cache($bin = 'default') {
     return static::$container->get('cache.' . $bin);
   }
 
@@ -217,6 +270,8 @@ class Drupal {
    * Returns the locking layer instance.
    *
    * @return \Drupal\Core\Lock\LockBackendInterface
+   *
+   * @ingroup lock
    */
   public static function lock() {
     return static::$container->get('lock');
@@ -239,6 +294,20 @@ class Drupal {
    */
   public static function config($name) {
     return static::$container->get('config.factory')->get($name);
+  }
+
+  /**
+   * Retrieves the configuration factory.
+   *
+   * This is mostly used to change the override settings on the configuration
+   * factory. For example, changing the language, or turning all overrides on
+   * or off.
+   *
+   * @return \Drupal\Core\Config\ConfigFactoryInterface
+   *   The configuration factory service.
+   */
+  public static function configFactory() {
+    return static::$container->get('config.factory');
   }
 
   /**
@@ -288,7 +357,7 @@ class Drupal {
    * needs to be the same across development, production, etc. environments
    * (for example, the system maintenance message) should use \Drupal::config() instead.
    *
-   * @return \Drupal\Core\KeyValueStore\KeyValueStoreInterface
+   * @return \Drupal\Core\State\StateInterface
    */
   public static function state() {
     return static::$container->get('state');
@@ -297,11 +366,11 @@ class Drupal {
   /**
    * Returns the default http client.
    *
-   * @return \Guzzle\Http\ClientInterface
+   * @return \GuzzleHttp\ClientInterface
    *   A guzzle http client instance.
    */
   public static function httpClient() {
-    return static::$container->get('http_default_client');
+    return static::$container->get('http_client');
   }
 
   /**
@@ -331,7 +400,7 @@ class Drupal {
    *   AND if all conditions in the query need to apply, OR if any of them is
    *   enough. Optional, defaults to AND.
    *
-   * @return \Drupal\Core\Entity\Query\QueryInterface
+   * @return \Drupal\Core\Entity\Query\QueryAggregateInterface
    *   The query object that can query the given entity type.
    */
   public static function entityQueryAggregate($entity_type, $conjunction = 'AND') {
@@ -366,8 +435,8 @@ class Drupal {
    *
    * @see \Drupal\Core\TypedData\TypedDataManager::create()
    */
-  public static function typedData() {
-    return static::$container->get('typed_data');
+  public static function typedDataManager() {
+    return static::$container->get('typed_data_manager');
   }
 
   /**
@@ -391,46 +460,18 @@ class Drupal {
   }
 
   /**
-   * Generates a URL or path for a specific route based on the given parameters.
+   * Generates a URL string for a specific route based on the given parameters.
    *
-   * Parameters that reference placeholders in the route pattern will be
-   * substituted for them in the pattern. Extra params are added as query
-   * strings to the URL.
+   * This method is a convenience wrapper for generating URL strings for URLs
+   * that have Drupal routes (that is, most pages generated by Drupal) using
+   * the \Drupal\Core\Url object. See \Drupal\Core\Url::fromRoute() for
+   * detailed documentation. For non-routed local URIs relative to
+   * the base path (like robots.txt) use Url::fromUri()->toString() with the
+   * base:// scheme.
    *
-   * @param string $route_name
-   *   The name of the route
-   * @param array $route_parameters
-   *   An associative array of parameter names and values.
-   * @param array $options
-   *   (optional) An associative array of additional options, with the following
-   *   elements:
-   *   - 'query': An array of query key/value-pairs (without any URL-encoding)
-   *     to append to the URL. Merged with the parameters array.
-   *   - 'fragment': A fragment identifier (named anchor) to append to the URL.
-   *     Do not include the leading '#' character.
-   *   - 'absolute': Defaults to FALSE. Whether to force the output to be an
-   *     absolute link (beginning with http:). Useful for links that will be
-   *     displayed outside the site, such as in an RSS feed.
-   *   - 'language': An optional language object used to look up the alias
-   *     for the URL. If $options['language'] is omitted, the language will be
-   *     obtained from language(Language::TYPE_URL).
-   *   - 'https': Whether this URL should point to a secure location. If not
-   *     defined, the current scheme is used, so the user stays on HTTP or HTTPS
-   *     respectively. if mixed mode sessions are permitted, TRUE enforces HTTPS
-   *     and FALSE enforces HTTP.
-   *
-   * @return string
-   *   The generated URL for the given route.
-   *
-   * @throws \Symfony\Component\Routing\Exception\RouteNotFoundException
-   *   Thrown when the named route doesn't exist.
-   * @throws \Symfony\Component\Routing\Exception\MissingMandatoryParametersException
-   *   Thrown when some parameters are missing that are mandatory for the route.
-   * @throws \Symfony\Component\Routing\Exception\InvalidParameterException
-   *   Thrown when a parameter value for a placeholder is not correct because it
-   *   does not match the requirement.
-   *
-   * @see \Drupal\Core\Routing\UrlGeneratorInterface::generateFromRoute()
+   * @see \Drupal\Core\Url
+   * @see \Drupal\Core\Url::fromRoute()
+   * @see \Drupal\Core\Url::fromUri()
    */
   public static function url($route_name, $route_parameters = array(), $options = array()) {
     return static::$container->get('url_generator')->generateFromRoute($route_name, $route_parameters, $options);
@@ -446,65 +487,17 @@ class Drupal {
   }
 
   /**
-   * Renders a link to a route given a route name and its parameters.
+   * Renders a link with a given link text and Url object.
    *
-   * This function correctly handles aliased paths and sanitizing text, so all
-   * internal links output by modules should be generated by this function if
-   * possible.
+   * This method is a convenience wrapper for the link generator service's
+   * generate() method. For detailed documentation, see
+   * \Drupal\Core\Routing\LinkGeneratorInterface::generate().
    *
-   * However, for links enclosed in translatable text you should use t() and
-   * embed the HTML anchor tag directly in the translated string. For example:
-   * @code
-   * t('Visit the <a href="@url">content types</a> page', array('@url' => \Drupal::url('node.overview_types')));
-   * @endcode
-   * This keeps the context of the link title ('settings' in the example) for
-   * translators.
-   *
-   * @param string|array $text
-   *   The link text for the anchor tag as a translated string or render array.
-   * @param string $route_name
-   *   The name of the route to use to generate the link.
-   * @param array $parameters
-   *   (optional) Any parameters needed to render the route path pattern.
-   * @param array $options
-   *   (optional) An associative array of additional options. Defaults to an
-   *   empty array. It may contain the following elements:
-   *   - 'query': An array of query key/value-pairs (without any URL-encoding) to
-   *     append to the URL.
-   *   - absolute: Whether to force the output to be an absolute link (beginning
-   *     with http:). Useful for links that will be displayed outside the site,
-   *     such as in an RSS feed. Defaults to FALSE.
-   *   - attributes: An associative array of HTML attributes to apply to the
-   *     anchor tag. If element 'class' is included, it must be an array; 'title'
-   *     must be a string; other elements are more flexible, as they just need
-   *     to work as an argument for the constructor of the class
-   *     Drupal\Core\Template\Attribute($options['attributes']).
-   *   - html: Whether $text is HTML or just plain-text. For
-   *     example, to make an image tag into a link, this must be set to TRUE, or
-   *     you will see the escaped HTML image tag. $text is not sanitized if
-   *     'html' is TRUE. The calling function must ensure that $text is already
-   *     safe. Defaults to FALSE.
-   *   - language: An optional language object. If the path being linked to is
-   *     internal to the site, $options['language'] is used to determine whether
-   *     the link is "active", or pointing to the current page (the language as
-   *     well as the path must match).
-   *
-   * @return string
-   *   An HTML string containing a link to the given route and parameters.
-   *
-   * @throws \Symfony\Component\Routing\Exception\RouteNotFoundException
-   *   Thrown when the named route doesn't exist.
-   * @throws \Symfony\Component\Routing\Exception\MissingMandatoryParametersException
-   *   Thrown when some parameters are missing that are mandatory for the route.
-   * @throws \Symfony\Component\Routing\Exception\InvalidParameterException
-   *   Thrown when a parameter value for a placeholder is not correct because it
-   *   does not match the requirement.
-   *
-   * @see \Drupal\Core\Routing\UrlGeneratorInterface::generateFromRoute()
    * @see \Drupal\Core\Utility\LinkGeneratorInterface::generate()
+   * @see \Drupal\Core\Url
    */
-  public static function l($text, $route_name, array $parameters = array(), array $options = array()) {
-    return static::$container->get('link_generator')->generate($text, $route_name, $parameters, $options);
+  public static function l($text, Url $url) {
+    return static::$container->get('link_generator')->generate($text, $url);
   }
 
   /**
@@ -520,7 +513,7 @@ class Drupal {
   /**
    * Returns the language manager service.
    *
-   * @return \Drupal\Core\Language\LanguageManager
+   * @return \Drupal\Core\Language\LanguageManagerInterface
    *   The language manager.
    */
   public static function languageManager() {
@@ -530,8 +523,15 @@ class Drupal {
   /**
    * Returns the CSRF token manager service.
    *
+   * The generated token is based on the session ID of the current user. Normally,
+   * anonymous users do not have a session, so the generated token will be
+   * different on every page request. To generate a token for users without a
+   * session, manually start a session prior to calling this function.
+   *
    * @return \Drupal\Core\Access\CsrfTokenGenerator
    *   The CSRF token manager.
+   *
+   * @see \Drupal\Core\Session\SessionManager::start()
    */
   public static function csrfToken() {
     return static::$container->get('csrf_token');
@@ -555,6 +555,68 @@ class Drupal {
    */
   public static function formBuilder() {
     return static::$container->get('form_builder');
+  }
+
+  /**
+   * Gets the theme service.
+   *
+   * @return \Drupal\Core\Theme\ThemeManagerInterface
+   */
+  public static function theme() {
+    return static::$container->get('theme.manager');
+  }
+
+  /**
+   * Gets the syncing state.
+   *
+   * @return bool
+   *   Returns TRUE is syncing flag set.
+   */
+  public static function isConfigSyncing() {
+    return static::$container->get('config.installer')->isSyncing();
+  }
+
+  /**
+   * Returns a channel logger object.
+   *
+   * @param string $channel
+   *   The name of the channel. Can be any string, but the general practice is
+   *   to use the name of the subsystem calling this.
+   *
+   * @return \Psr\Log\LoggerInterface
+   *   The logger for this channel.
+   */
+  public static function logger($channel) {
+    return static::$container->get('logger.factory')->get($channel);
+  }
+
+  /**
+   * Returns the menu tree.
+   *
+   * @return \Drupal\Core\Menu\MenuLinkTreeInterface
+   *   The menu tree.
+   */
+  public static function menuTree() {
+    return static::$container->get('menu.link_tree');
+  }
+
+  /**
+   * Returns the path validator.
+   *
+   * @return \Drupal\Core\Path\PathValidatorInterface
+   */
+  public static function pathValidator() {
+    return static::$container->get('path.validator');
+  }
+
+  /**
+   * Returns the access manager service.
+   *
+   * @return \Drupal\Core\Access\AccessManagerInterface
+   *   The access manager service.
+   */
+  public static function accessManager() {
+    return static::$container->get('access_manager');
   }
 
 }

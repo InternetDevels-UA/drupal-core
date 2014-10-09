@@ -7,43 +7,78 @@
 
 namespace Drupal\Core\Field\Plugin\Field\FieldType;
 
+use Drupal\Component\Utility\Random;
+use Drupal\Core\Field\FieldDefinitionInterface;
+use Drupal\Core\Field\FieldStorageDefinitionInterface;
 use Drupal\Core\Field\FieldItemBase;
+use Drupal\Core\Render\Element\Email;
+use Drupal\Core\TypedData\DataDefinition;
 
 /**
- * Defines the 'email' entity field type.
+ * Defines the 'email' field type.
  *
  * @FieldType(
  *   id = "email",
- *   label = @Translation("E-mail"),
- *   description = @Translation("An entity field containing an e-mail value."),
- *   configurable = FALSE
+ *   label = @Translation("Email"),
+ *   description = @Translation("An entity field containing an email value."),
+ *   default_widget = "email_default",
+ *   default_formatter = "string"
  * )
  */
 class EmailItem extends FieldItemBase {
 
   /**
-   * Definitions of the contained properties.
-   *
-   * @see EmailItem::getPropertyDefinitions()
-   *
-   * @var array
+   * {@inheritdoc}
    */
-  static $propertyDefinitions;
+  public static function propertyDefinitions(FieldStorageDefinitionInterface $field_definition) {
+    $properties['value'] = DataDefinition::create('email')
+      ->setLabel(t('Email value'));
 
-  /**
-   * Implements ComplexDataInterface::getPropertyDefinitions().
-   */
-  public function getPropertyDefinitions() {
-
-    if (!isset(static::$propertyDefinitions)) {
-      static::$propertyDefinitions['value'] = array(
-        'type' => 'email',
-        'label' => t('E-mail value'),
-      );
-    }
-    return static::$propertyDefinitions;
+    return $properties;
   }
 
+  /**
+   * {@inheritdoc}
+   */
+  public static function schema(FieldStorageDefinitionInterface $field_definition) {
+    return array(
+      'columns' => array(
+        'value' => array(
+          'type' => 'varchar',
+          'length' => Email::EMAIL_MAX_LENGTH,
+          'not null' => FALSE,
+        ),
+      ),
+    );
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getConstraints() {
+    $constraint_manager = \Drupal::typedDataManager()->getValidationConstraintManager();
+    $constraints = parent::getConstraints();
+
+    $constraints[] = $constraint_manager->create('ComplexData', array(
+      'value' => array(
+        'Length' => array(
+          'max' => Email::EMAIL_MAX_LENGTH,
+          'maxMessage' => t('%name: the email address can not be longer than @max characters.', array('%name' => $this->getFieldDefinition()->getLabel(), '@max' => Email::EMAIL_MAX_LENGTH)),
+        )
+      ),
+    ));
+
+    return $constraints;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function generateSampleValue(FieldDefinitionInterface $field_definition) {
+    $random = new Random();
+    $values['value'] = $random->name() . '@example.com';
+    return $values;
+  }
 
   /**
    * {@inheritdoc}

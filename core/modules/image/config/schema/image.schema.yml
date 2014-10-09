@@ -1,26 +1,14 @@
-# Image module schema: image.schema.yml
+# Schema for configuration files of the Image module.
 
-# Data types for image module.
-image.size:
-  type: mapping
-  mapping:
-    width:
-      type: integer
-      label: 'Width'
-    height:
-      type: integer
-      label: 'Height'
-
-# Image styles (multiple).
-# Plugin \Drupal\image\Entity\ImageStyle
 image.style.*:
-  type: mapping
+  type: config_entity
   label: 'Image style'
   mapping:
     name:
       type: string
     label:
       type: label
+      label: 'Label'
     effects:
       type: sequence
       sequence:
@@ -34,21 +22,21 @@ image.style.*:
               type: integer
             uuid:
               type: string
-    langcode:
-      type: string
-      label: 'Default language'
+    third_party_settings:
+      type: sequence
+      label: 'Third party settings'
+      sequence:
+        - type: image_style.third_party.[%key]
 
-# Image effects plugins: image.effect.%
-# These are used in image styles.
 image.effect.image_crop:
-  type: image.size
+  type: image_size
   label: 'Image crop'
   mapping:
     anchor:
       label: 'Anchor'
 
 image.effect.image_resize:
-  type: image.size
+  type: image_size
   label: 'Image resize'
 
 image.effect.image_rotate:
@@ -65,7 +53,7 @@ image.effect.image_rotate:
       label: 'Randomize'
 
 image.effect.image_scale:
-  type: image.size
+  type: image_size
   label: 'Image scale'
   mapping:
     upscale:
@@ -73,10 +61,9 @@ image.effect.image_scale:
       label: 'Upscale'
 
 image.effect.image_scale_and_crop:
-  type: image.size
+  type: image_size
   label: 'Image scale and crop'
 
-# Schema for configuration files of image module.
 image.settings:
   type: mapping
   mapping:
@@ -89,3 +76,85 @@ image.settings:
     suppress_itok_output:
       type: boolean
       label: 'Suppress the itok query string for image derivatives'
+
+field.image.storage_settings:
+  type: field.file.storage_settings
+  label: 'Image settings'
+  mapping:
+    default_image:
+      type: field_default_image
+      label: 'Default value'
+
+field.image.field_settings:
+  type: base_file_field_field_settings
+  label: 'Image settings'
+  mapping:
+    max_resolution:
+      type: string
+      label: 'Maximum image resolution'
+    min_resolution:
+      type: string
+      label: 'Minimum image resolution'
+    alt_field:
+      type: boolean
+      label: 'Enable Alt field'
+    alt_field_required:
+      type: boolean
+      label: 'Alt field required'
+    title_field:
+      type: boolean
+      label: 'Enable Title field'
+    title_field_required:
+      type: boolean
+      label: 'Title field required'
+    default_image:
+      type: field_default_image
+      label: 'Default value'
+
+field.image.value:
+  type: sequence
+  label: 'Default value'
+  sequence:
+    - type: mapping
+      label: 'Default image'
+      mapping:
+        fid:
+          type: integer
+          label: 'File ID'
+        alt:
+          type: string
+          label: 'Alternate text'
+        title:
+          type: string
+          label: 'Title text'
+        width:
+          type: integer
+          label: 'Width'
+        height:
+          type: integer
+          label: 'Height'
+
+entity_view_display.field.image:
+  type: entity_field_view_display_base
+  label: 'Image field display format settings'
+  mapping:
+    settings:
+      type: sequence
+      label: 'Format settings'
+      sequence:
+        - type: string
+
+entity_form_display.field.image_image:
+  type: entity_field_form_display_base
+  label: 'Image field display format settings'
+  mapping:
+    settings:
+      type: mapping
+      label: 'Format settings'
+      mapping:
+        progress_indicator:
+          type: string
+          label: 'Progress indicator'
+        preview_image_style:
+          type: string
+          label: 'Preview image style'

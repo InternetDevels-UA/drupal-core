@@ -7,31 +7,19 @@
 
 namespace Drupal\Tests\Core\Route;
 
-use Drupal\Core\Access\AccessCheckInterface;
-use Drupal\Core\DependencyInjection\ContainerBuilder;
+use Drupal\Core\Access\AccessResult;
 use Drupal\Core\Session\UserSession;
 use Drupal\Tests\UnitTestCase;
 use Drupal\user\Access\RoleAccessCheck;
-use Symfony\Component\DependencyInjection\Container;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\Routing\Route;
 use Symfony\Component\Routing\RouteCollection;
 
 /**
- * Defines tests for role based access in routes.
- *
- * @see \Drupal\user\Access\RoleAccessCheck
+ * @coversDefaultClass \Drupal\user\Access\RoleAccessCheck
+ * @group Access
+ * @group Route
  */
 class RoleAccessCheckTest extends UnitTestCase {
-
-  public static function getInfo() {
-    return array(
-      'name' => 'Router Role tests',
-      'description' => 'Test for the role based access checker in the routing system.',
-      'group' => 'Routing',
-    );
-  }
 
   /**
    * Generates the test route collection.
@@ -62,7 +50,7 @@ class RoleAccessCheckTest extends UnitTestCase {
         '_controller' => '\Drupal\router_test\TestControllers::test1',
       ),
       array(
-        '_role' => 'role_test_1+role_test_2',
+        '_role' => 'role_test_1,role_test_2',
       )
     ));
     // Ensure that trimming the values works on "OR" conjunctions.
@@ -71,7 +59,7 @@ class RoleAccessCheckTest extends UnitTestCase {
         '_controller' => '\Drupal\router_test\TestControllers::test1',
       ),
       array(
-        '_role' => 'role_test_1 + role_test_2',
+        '_role' => 'role_test_1 , role_test_2',
       )
     ));
     $route_collection->add('role_test_5', new Route('/role_test_5',
@@ -79,7 +67,7 @@ class RoleAccessCheckTest extends UnitTestCase {
         '_controller' => '\Drupal\router_test\TestControllers::test1',
       ),
       array(
-        '_role' => 'role_test_1,role_test_2',
+        '_role' => 'role_test_1+role_test_2',
       )
     ));
     // Ensure that trimming the values works on "AND" conjunctions.
@@ -88,7 +76,7 @@ class RoleAccessCheckTest extends UnitTestCase {
         '_controller' => '\Drupal\router_test\TestControllers::test1',
       ),
       array(
-        '_role' => 'role_test_1 , role_test_2',
+        '_role' => 'role_test_1 + role_test_2',
       )
     ));
 
@@ -159,17 +147,15 @@ class RoleAccessCheckTest extends UnitTestCase {
     $collection = $this->getTestRouteCollection();
 
     foreach ($grant_accounts as $account) {
-      $subrequest = Request::create($path, 'GET');
       $message = sprintf('Access granted for user with the roles %s on path: %s', implode(', ', $account->getRoles()), $path);
-      $this->assertSame(AccessCheckInterface::ALLOW, $role_access_check->access($collection->get($path), $subrequest, $account), $message);
+      $this->assertEquals(AccessResult::allowed()->cachePerRole(), $role_access_check->access($collection->get($path), $account), $message);
     }
 
     // Check all users which don't have access.
     foreach ($deny_accounts as $account) {
-      $subrequest = Request::create($path, 'GET');
       $message = sprintf('Access denied for user %s with the roles %s on path: %s', $account->id(), implode(', ', $account->getRoles()), $path);
-      $has_access = $role_access_check->access($collection->get($path), $subrequest, $account);
-      $this->assertSame(AccessCheckInterface::DENY, $has_access , $message);
+      $has_access = $role_access_check->access($collection->get($path), $account);
+      $this->assertEquals(AccessResult::neutral()->cachePerRole(), $has_access, $message);
     }
   }
 

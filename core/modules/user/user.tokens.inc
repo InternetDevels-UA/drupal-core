@@ -5,6 +5,8 @@
  * Builds placeholder replacement tokens for user-related data.
  */
 
+use Drupal\Component\Utility\String;
+
 /**
  * Implements hook_token_info().
  */
@@ -66,7 +68,7 @@ function user_tokens($type, $tokens, array $data = array(), array $options = arr
   $token_service = \Drupal::token();
   $url_options = array('absolute' => TRUE);
   if (isset($options['langcode'])) {
-    $url_options['language'] = language_load($options['langcode']);
+    $url_options['language'] = \Drupal::languageManager()->getLanguage($options['langcode']);
     $langcode = $options['langcode'];
   }
   else {
@@ -88,19 +90,19 @@ function user_tokens($type, $tokens, array $data = array(), array $options = arr
 
         case 'name':
           $name = user_format_name($account);
-          $replacements[$original] = $sanitize ? check_plain($name) : $name;
+          $replacements[$original] = $sanitize ? String::checkPlain($name) : $name;
           break;
 
         case 'mail':
-          $replacements[$original] = $sanitize ? check_plain($account->getEmail()) : $account->getEmail();
+          $replacements[$original] = $sanitize ? String::checkPlain($account->getEmail()) : $account->getEmail();
           break;
 
         case 'url':
-          $replacements[$original] = $account->id() ? url("user/" . $account->id(), $url_options) : t('not yet assigned');
+          $replacements[$original] = $account->id() ? $account->url('canonical', $url_options) : t('not yet assigned');
           break;
 
         case 'edit-url':
-          $replacements[$original] = $account->id() ? url("user/" . $account->id() . "/edit", $url_options) : t('not yet assigned');
+          $replacements[$original] = $account->id() ? $account->url('edit-form', $url_options) : t('not yet assigned');
           break;
 
         // These tokens are default variations on the chained tokens handled below.
@@ -125,7 +127,7 @@ function user_tokens($type, $tokens, array $data = array(), array $options = arr
   }
 
   if ($type == 'current-user') {
-    $account = user_load($GLOBALS['user']->id());
+    $account = user_load(\Drupal::currentUser()->id());
     $replacements += $token_service->generate('user', $tokens, array('user' => $account), $options);
   }
 

@@ -4,69 +4,28 @@
  * @file
  * Main functions of the module.
  */
+
 use Drupal\Core\Cache\CacheBackendInterface;
+use Drupal\Core\Routing\RouteMatchInterface;
 
 /**
- * Implements hook_permission().
+ * Implements hook_help().
  */
-function tour_permission() {
-  return array(
-    'access tour' => array(
-      'title' => t('Access tour'),
-      'description' => t('View tour tips.'),
-    ),
-  );
-}
-
-/**
- * Implements hook_library_info().
- */
-function tour_library_info() {
-  $path = drupal_get_path('module', 'tour');
-
-  $libraries['tour'] = array(
-    'title' => 'Tour',
-    'version' => \Drupal::VERSION,
-    'js' => array(
-      // Add the JavaScript, with a group and weight such that it will run
-      // before modules/overlay/overlay-parent.js.
-      $path . '/js/tour.js' => array('group' => JS_LIBRARY, 'weight' => -1),
-    ),
-    'dependencies' => array(
-      array('system', 'jquery'),
-      array('system', 'drupal'),
-      array('system', 'backbone'),
-      array('system', 'jquery.bbq'),
-      array('tour', 'jquery.joyride'),
-      array('tour', 'tour-styling'),
-    ),
-  );
-
-  $libraries['tour-styling'] = array(
-    'title' => 'Tour',
-    'version' => \Drupal::VERSION,
-    'css' => array(
-      $path . '/css/tour.module.css' => array('media' => 'screen'),
-    )
-  );
-
-  $libraries['jquery.joyride'] = array(
-    'title' => 'Joyride',
-    'website' => 'https://github.com/zurb/joyride',
-    'version' => '2.0.3',
-    'js' => array(
-      $path . '/js/jquery.joyride-2.0.3.js' => array(),
-    ),
-    'css' => array(
-      $path . '/css/joyride-2.0.3.css' => array('media' => 'screen'),
-    ),
-    'dependencies' => array(
-      array('system', 'jquery'),
-      array('system', 'jquery.cookie'),
-    ),
-  );
-
-  return $libraries;
+function tour_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    case 'help.page.tour':
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t("The Tour module provides users with guided tours of the site interface. Each tour consists of several tips that highlight elements of the user interface, guide the user through a workflow, or explain key concepts of the website. For more information, see <a href='!tour'>the online documentation for the Tour module</a>.", array('!tour' => 'https://drupal.org/documentation/modules/tour')) . '</p>';
+      $output .= '<h3>' . t('Uses') . '</h3>';
+      $output .= '<dl>';
+      $output .= '<dt>' . t('Viewing tours') . '</dt>';
+      $output .= '<dd>' . t("If a tour is available on a page, a <em>Tour</em> button will be visible in the toolbar. If you click this button the first tip of the tour will appear. The tour continues after clicking the <em>Next</em> button in the tip. To see a tour users must have the permission <em>Access tour</em> and JavaScript must be enabled in the browser") . '</dd>';
+      $output .= '<dt>' . t('Creating tours') . '</dt>';
+      $output .= '<dd>' . t("Tours can be written as YAML-documents with a text editor, or using the contributed <a href='!tour_ui'>Tour UI</a> module. For more information, see <a href='!doc_url'>the online documentation for writing tours</a>.", array('!doc_url' => 'https://drupal.org/developing/api/tour', '!tour_ui' => 'https://drupal.org/project/tour_ui')) . '</dd>';
+      $output .= '</dl>';
+      return $output;
+  }
 }
 
 /**
@@ -95,7 +54,7 @@ function tour_toolbar() {
     ),
     '#attached' => array(
       'library' => array(
-        array('tour', 'tour'),
+        'tour/tour',
       ),
     ),
   );
@@ -104,43 +63,42 @@ function tour_toolbar() {
 }
 
 /**
- * Implements hook_preprocess_HOOK() for page templates.
+ * Implements hook_page_build().
  */
-function tour_preprocess_page(&$variables) {
+function tour_page_build(&$page) {
   if (!\Drupal::currentUser()->hasPermission('access tour')) {
     return;
   }
 
-  // @todo replace this with http://drupal.org/node/1918768 once it is committed.
-  $path = current_path();
-  $tour_items = array();
-  // Load all of the items and match on path.
-  $tours = entity_load_multiple('tour');
+  // Load all of the items and match on route name.
+  $route_match = \Drupal::routeMatch();
+  $route_name = $route_match->getRouteName();
 
-  $path_alias = drupal_strtolower(\Drupal::service('path.alias_manager')->getPathAlias($path));
-  foreach ($tours as $tour_id => $tour) {
-    // @todo Replace this with an entity query that does path matching when
-    // http://drupal.org/node/1918768 lands.
-    $pages = implode("\n", $tour->getPaths());
-    if (!drupal_match_path($path_alias, $pages) && (($path == $path_alias) || drupal_match_path($path, $pages))) {
-      unset($tours[$tour_id]);
+  $results = \Drupal::entityQuery('tour')
+    ->condition('routes.*.route_name', $route_name)
+    ->execute();
+  if (!empty($results) && $tours = entity_load_multiple('tour', array_keys($results))) {
+    foreach ($tours as $id => $tour) {
+      // Match on params.
+      if (!$tour->hasMatchingRoute($route_name, $route_match->getRawParameters()->all())) {
+        unset($tours[$id]);
+      }
     }
-  }
-
-  if ($tours) {
-    $variables['page']['help']['tour'] = entity_view_multiple($tours, 'full');
+    if (!empty($tours)) {
+      $page['help']['tour'] = entity_view_multiple($tours, 'full');
+    }
   }
 }
 
 /**
- * Implements hook_tour_insert().
+ * Implements hook_ENTITY_TYPE_insert() for tour entities.
  */
 function tour_tour_insert($entity) {
   \Drupal::service('plugin.manager.tour.tip')->clearCachedDefinitions();
 }
 
 /**
- * Implements hook_tour_update().
+ * Implements hook_ENTITY_TYPE_update() for tour entities.
  */
 function tour_tour_update($entity) {
   \Drupal::service('plugin.manager.tour.tip')->clearCachedDefinitions();

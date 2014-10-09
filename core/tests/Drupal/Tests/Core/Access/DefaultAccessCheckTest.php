@@ -7,15 +7,15 @@
 
 namespace Drupal\Tests\Core\Access;
 
+use Drupal\Core\Access\AccessResult;
 use Drupal\Core\Access\DefaultAccessCheck;
 use Drupal\Tests\UnitTestCase;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Route;
 
 /**
- * Defines a test to check the default access checker.
- *
- * @see \Drupal\Core\Access\DefaultAccessCheck
+ * @coversDefaultClass \Drupal\Core\Access\DefaultAccessCheck
+ * @group Access
  */
 class DefaultAccessCheckTest extends UnitTestCase {
 
@@ -33,14 +33,6 @@ class DefaultAccessCheckTest extends UnitTestCase {
    */
   protected $account;
 
-  public static function getInfo() {
-    return array(
-      'name' => 'DefaultAccessCheck access checker',
-      'description' => 'Tests the DefaultAccessCheck class.',
-      'group' => 'Routing',
-    );
-  }
-
   /**
    * {@inheritdoc}
    */
@@ -51,14 +43,6 @@ class DefaultAccessCheckTest extends UnitTestCase {
     $this->accessChecker = new DefaultAccessCheck();
   }
 
-
-  /**
-   * Tests the appliesTo method.
-   */
-  public function testAppliesTo() {
-    $this->assertEquals($this->accessChecker->appliesTo(), array('_access'), 'Access checker returned the expected appliesTo() array.');
-  }
-
   /**
    * Test the access method.
    */
@@ -66,13 +50,13 @@ class DefaultAccessCheckTest extends UnitTestCase {
     $request = new Request(array());
 
     $route = new Route('/test-route', array(), array('_access' => 'NULL'));
-    $this->assertNull($this->accessChecker->access($route, $request, $this->account));
+    $this->assertEquals(AccessResult::neutral(), $this->accessChecker->access($route, $request, $this->account));
 
     $route = new Route('/test-route', array(), array('_access' => 'FALSE'));
-    $this->assertFalse($this->accessChecker->access($route, $request, $this->account));
+    $this->assertEquals(AccessResult::forbidden(), $this->accessChecker->access($route, $request, $this->account));
 
     $route = new Route('/test-route', array(), array('_access' => 'TRUE'));
-    $this->assertTrue($this->accessChecker->access($route, $request, $this->account));
+    $this->assertEquals(AccessResult::allowed(), $this->accessChecker->access($route, $request, $this->account));
   }
 
 }

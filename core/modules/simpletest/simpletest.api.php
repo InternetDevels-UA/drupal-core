@@ -6,18 +6,6 @@
  */
 
 /**
- * Global variable that holds information about the tests being run.
- *
- * An array, with the following keys:
- *  - 'test_run_id': the ID of the test being run, in the form 'simpletest_%"
- *  - 'in_child_site': TRUE if the current request is a cURL request from
- *     the parent site.
- *
- * @var array
- */
-global $drupal_test_info;
-
-/**
  * @addtogroup hooks
  * @{
  */
@@ -26,9 +14,9 @@ global $drupal_test_info;
  * Alter the list of tests.
  *
  * @param $groups
- *   A two dimension array, the first key is the test group (as defined in
- *   getInfo) the second is the name of the class and the value is the return
- *   value of the getInfo method.
+ *   A two dimensional array, the first key is the test group, the second is the
+ *   name of the test class, and the value is in associative array containing
+ *   'name', 'description', 'group', and 'requires' keys.
  */
 function hook_simpletest_alter(&$groups) {
   // An alternative session handler module would not want to run the original

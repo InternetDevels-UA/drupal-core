@@ -10,125 +10,86 @@ namespace Drupal\Core\Language;
 /**
  * An object containing the information for an interface language.
  *
- * @todo To keep backwards compatibility with stdClass, we currently use
- * public scopes for the Language class's variables. We will change these to
- * full get/set functions in a follow-up issue: http://drupal.org/node/1512424
- *
  * @see language_default()
  */
-class Language {
+class Language implements LanguageInterface {
+
+  /**
+   * The values to use to instantiate the default language.
+   *
+   * @var array
+   */
+  public static $defaultValues = array(
+    'id' => 'en',
+    'name' => 'English',
+    'direction' => self::DIRECTION_LTR,
+    'weight' => 0,
+    'locked' => FALSE,
+  );
+
   // Properties within the Language are set up as the default language.
+
+  /**
+   * The human readable English name.
+   *
+   * @var string
+   */
   public $name = '';
+
+  /**
+   * The ID, langcode.
+   *
+   * @var string
+   */
   public $id = '';
-  public $direction = Language::DIRECTION_LTR;
+
+  /**
+   * The direction, left-to-right, or right-to-left.
+   *
+   * Defined using constants, either self::DIRECTION_LTR or self::DIRECTION_RTL.
+   *
+   * @var int
+   */
+  public $direction = self::DIRECTION_LTR;
+
+  /**
+   * The weight, used for ordering languages in lists, like selects or tables.
+   *
+   * @var int
+   */
   public $weight = 0;
-  public $default = FALSE;
-  public $method_id = NULL;
-  public $locked = FALSE;
 
   /**
-   * Special system language code (only applicable to UI language).
+   * Locked indicates a language used by the system, not an actual language.
    *
-   * Refers to the language used in Drupal and module/theme source code. Drupal
-   * uses the built-in text for English by default, but if configured to allow
-   * translation/customization of English, we need to differentiate between the
-   * built-in language and the English translation.
-   */
-  const LANGCODE_SYSTEM = 'system';
-
-  /**
-   * The language code used when no language is explicitly assigned (yet).
+   * Examples of locked languages are, LANGCODE_NOT_SPECIFIED, und, and
+   * LANGCODE_NOT_APPLICABLE, zxx, which are usually shown in language selects
+   * but hidden in places like the Language configuration and cannot be deleted.
    *
-   * Should be used when language information is not available or cannot be
-   * determined. This special language code is useful when we know the data
-   * might have linguistic information, but we don't know the language.
+   * @var bool
+   */
+  protected $locked = FALSE;
+
+  /**
+   * Constructs a new class instance.
    *
-   * See http://www.w3.org/International/questions/qa-no-language#undetermined.
+   * @param array $values
+   *   An array of property values, keyed by property name, used to construct
+   *   the language.
    */
-  const LANGCODE_NOT_SPECIFIED = 'und';
-
-  /**
-   * The language code used when the marked object has no linguistic content.
-   *
-   * Should be used when we explicitly know that the data referred has no
-   * linguistic content.
-   *
-   * See http://www.w3.org/International/questions/qa-no-language#nonlinguistic.
-   */
-  const LANGCODE_NOT_APPLICABLE = 'zxx';
-
-  /**
-   * Language code referring to the default language of data, e.g. of an entity.
-   *
-   * @todo: Change value to differ from Language::LANGCODE_NOT_SPECIFIED once
-   * field API leverages the property API.
-   */
-  const LANGCODE_DEFAULT = 'und';
-
-  /**
-   * The language state when referring to configurable languages.
-   */
-  const STATE_CONFIGURABLE = 1;
-
-  /**
-   * The language state when referring to locked languages.
-   */
-  const STATE_LOCKED = 2;
-
-  /**
-   * The language state used when referring to all languages.
-   */
-  const STATE_ALL = 3;
-
-  /**
-   * The language state used when referring to the site's default language.
-   */
-  const STATE_SITE_DEFAULT = 4;
-
-  /**
-   * The type of language used to define the content language.
-   */
-  const TYPE_CONTENT = 'language_content';
-
-  /**
-   * The type of language used to select the user interface.
-   */
-  const TYPE_INTERFACE = 'language_interface';
-
-  /**
-   * The type of language used for URLs.
-   */
-  const TYPE_URL = 'language_url';
-
-  /**
-   * Language written left to right. Possible value of $language->direction.
-   */
-  const DIRECTION_LTR = 0;
-
-  /**
-   * Language written right to left. Possible value of $language->direction.
-   */
-  const DIRECTION_RTL = 1;
-
-  /**
-   * Language constructor builds the default language object.
-   *
-   * @param array $options
-   *   The properties used to construct the language.
-   */
-  public function __construct(array $options = array()) {
+  public function __construct(array $values = array()) {
     // Set all the provided properties for the language.
-    foreach ($options as $name => $value) {
-      $this->{$name} = $value;
+    foreach ($values as $key => $value) {
+      $this->{$key} = $value;
     }
-    // If some options were not set, set sane defaults of a predefined language.
-    if (!isset($options['name']) || !isset($options['direction'])) {
+    // If some values were not set, set sane defaults of a predefined language.
+    if (!isset($values['name']) || !isset($values['direction'])) {
       $predefined = LanguageManager::getStandardLanguageList();
       if (isset($predefined[$this->id])) {
-        if (!isset($options['name'])) {
+        if (!isset($values['name'])) {
           $this->name = $predefined[$this->id][0];
         }
-        if (!isset($options['direction']) && isset($predefined[$this->id][2])) {
+        if (!isset($values['direction']) && isset($predefined[$this->id][2])) {
           $this->direction = $predefined[$this->id][2];
         }
       }
@@ -136,32 +97,73 @@ class Language {
   }
 
   /**
-   * Extend $this with properties from the given object.
-   *
-   * @todo Remove this function once $GLOBALS['language'] is gone.
+   * {@inheritdoc}
    */
-  public function extend($obj) {
-    $variables = get_object_vars($obj);
-    foreach ($variables as $variable => $value) {
-      $this->$variable = $value;
-    }
+  public function getName() {
+    return $this->name;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getId() {
+    return $this->id;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getDirection() {
+    return $this->direction;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getWeight() {
+    return $this->weight;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function isDefault() {
+    return static::getDefaultLangcode() == $this->getId();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function isLocked() {
+    return (bool) $this->locked;
   }
 
   /**
    * Sort language objects.
    *
-   * @param array $languages
+   * @param \Drupal\Core\Language\LanguageInterface[] $languages
    *   The array of language objects keyed by langcode.
    */
-  public static function sort($languages) {
-    uasort($languages, function ($a, $b) {
-      $a_weight = isset($a->weight) ? $a->weight : 0;
-      $b_weight = isset($b->weight) ? $b->weight : 0;
+  public static function sort(&$languages) {
+    uasort($languages, function (LanguageInterface $a, LanguageInterface $b) {
+      $a_weight = $a->getWeight();
+      $b_weight = $b->getWeight();
       if ($a_weight == $b_weight) {
-        return strnatcasecmp($a->name, $b->name);
+        return strnatcasecmp($a->getName(), $b->getName());
       }
       return ($a_weight < $b_weight) ? -1 : 1;
     });
+  }
+
+  /**
+   * Gets the default langcode.
+   *
+   * @return string
+   *   The current default langcode.
+   */
+  protected static function getDefaultLangcode() {
+    $language = \Drupal::service('language.default')->get();
+    return $language->getId();
   }
 
 }

@@ -7,6 +7,7 @@
 
 namespace Drupal\Core\EventSubscriber;
 
+use Drupal\Component\Utility\UrlHelper;
 use Drupal\Core\Routing\UrlGeneratorInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\HttpKernel\Event\FilterResponseEvent;
@@ -39,7 +40,7 @@ class RedirectResponseSubscriber implements EventSubscriberInterface {
   /**
    * Allows manipulation of the response object when performing a redirect.
    *
-   * @param Symfony\Component\HttpKernel\Event\FilterResponseEvent $event
+   * @param \Symfony\Component\HttpKernel\Event\FilterResponseEvent $event
    *   The Event to process.
    */
   public function checkRedirectUrl(FilterResponseEvent $event) {
@@ -48,13 +49,14 @@ class RedirectResponseSubscriber implements EventSubscriberInterface {
       $options = array();
 
       $destination = $event->getRequest()->query->get('destination');
-      // A destination in $_GET always overrides the current RedirectResponse.
-      // We do not allow absolute URLs to be passed via $_GET, as this can be an
-      // attack vector, with the following exception:
+      // A destination from \Drupal::request()->query always overrides the
+      // current RedirectResponse. We do not allow absolute URLs to be passed
+      // via \Drupal::request()->query, as this can be an attack vector, with
+      // the following exception:
       // - Absolute URLs that point to this site (i.e. same base URL and
       //   base path) are allowed.
-      if ($destination && (!url_is_external($destination) || _external_url_is_local($destination))) {
-        $destination = drupal_parse_url($destination);
+      if ($destination && (!UrlHelper::isExternal($destination) || UrlHelper::externalIsLocal($destination, $GLOBALS['base_url']))) {
+        $destination = UrlHelper::parse($destination);
 
         $path = $destination['path'];
         $options['query'] = $destination['query'];

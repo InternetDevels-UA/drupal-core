@@ -7,195 +7,250 @@
 
 namespace Drupal\Core\Language;
 
-use Symfony\Component\HttpFoundation\Request;
-use Drupal\Core\KeyValueStore\KeyValueStoreInterface;
+use Drupal\Component\Utility\String;
+use Drupal\Core\DependencyInjection\DependencySerializationTrait;
+use Drupal\Core\StringTranslation\TranslationInterface;
+use Drupal\Core\StringTranslation\TranslationWrapper;
 
 /**
- * Class responsible for initializing each language type.
+ * Class responsible for providing language support on language-unaware sites.
  */
-class LanguageManager {
+class LanguageManager implements LanguageManagerInterface {
+  use DependencySerializationTrait;
 
   /**
-   * A request object.
+   * The string translation service.
    *
-   * @var \Symfony\Component\HttpFoundation\Request
+   * @var \Drupal\Core\StringTranslation\TranslationInterface
    */
-  protected $request;
+  protected $translation;
 
   /**
-   * The Key/Value Store to use for state.
+   * An array of all the available languages keyed by language code.
    *
-   * @var \Drupal\Core\KeyValueStore\KeyValueStoreInterface
-   */
-  protected $state = NULL;
-
-  /**
-   * An array of language objects keyed by language type.
-   *
-   * @var array
+   * @var \Drupal\Core\Language\LanguageInterface[]
    */
   protected $languages;
 
   /**
-   * Whether or not the language manager has been initialized.
+   * The default language object.
    *
-   * @var bool
+   * @var \Drupal\Core\Language\LanguageDefault
    */
-  protected $initialized = FALSE;
+  protected $defaultLanguage;
 
   /**
-   * Whether already in the process of language initialization.
+   * Constructs the language manager.
    *
-   * @todo This is only needed due to the circular dependency between language
-   *   and config. See http://drupal.org/node/1862202 for the plan to fix this.
-   *
-   * @var bool
+   * @param \Drupal\Core\Language\LanguageDefault $default_language
+   *   The default language.
    */
-  protected $initializing = FALSE;
-
-  /**
-   * Constructs an LanguageManager object.
-   *
-   * @param \Drupal\Core\KeyValueStore\KeyValueStoreInterface $state
-   *   The state keyvalue store.
-   */
-  public function __construct(KeyValueStoreInterface $state = NULL) {
-    $this->state = $state;
+  public function __construct(LanguageDefault $default_language) {
+    $this->defaultLanguage = $default_language;
   }
 
   /**
-   * Initializes each language type to a language object.
+   * {@inheritdoc}
    */
-  public function init() {
-    if ($this->initialized) {
-      return;
-    }
-    if ($this->isMultilingual()) {
-      foreach ($this->getLanguageTypes() as $type) {
-        $this->getLanguage($type);
-      }
-    }
-    $this->initialized = TRUE;
+  public function setTranslation(TranslationInterface $translation) {
+    $this->translation = $translation;
   }
 
   /**
-   * Sets the $request property and resets all language types.
+   * Translates a string to the current language or to a given language.
    *
-   * @param \Symfony\Component\HttpFoundation\Request $request
-   *   The HttpRequest object representing the current request.
+   * @see \Drupal\Core\StringTranslation\TranslationInterface()
    */
-  public function setRequest(Request $request) {
-    $this->request = $request;
-    $this->reset();
-    $this->init();
+  protected function t($string, array $args = array(), array $options = array()) {
+    return $this->translation ? $this->translation->translate($string, $args, $options) : String::format($string, $args);
   }
 
   /**
-   * Returns a language object for the given type.
-   *
-   * @param string $type
-   *   (optional) The language type, e.g. the interface or the content language.
-   *   Defaults to \Drupal\Core\Language\Language::TYPE_INTERFACE.
-   *
-   * @return \Drupal\Core\Language\Language
-   *   A language object for the given type.
-   */
-  public function getLanguage($type = Language::TYPE_INTERFACE) {
-    if (isset($this->languages[$type])) {
-      return $this->languages[$type];
-    }
-
-    if ($this->isMultilingual() && $this->request) {
-      if (!$this->initializing) {
-        $this->initializing = TRUE;
-        // @todo Objectify the language system so that we don't have to load an
-        //   include file and call out to procedural code. See
-        //   http://drupal.org/node/1862202
-        include_once DRUPAL_ROOT . '/core/includes/language.inc';
-        $this->languages[$type] = language_types_initialize($type, $this->request);
-        $this->initializing = FALSE;
-      }
-      else {
-        // Config has called getLanguage() during initialization of a language
-        // type. Simply return the default language without setting it on the
-        // $this->languages property. See the TODO in the docblock for the
-        // $initializing property.
-        return $this->getLanguageDefault();
-      }
-    }
-    else {
-      $this->languages[$type] = $this->getLanguageDefault();
-    }
-    return $this->languages[$type];
-  }
-
-  /**
-   * Resets the given language type or all types if none specified.
-   *
-   * @param string|null $type
-   *   (optional) The language type to reset as a string, e.g.,
-   *   Language::TYPE_INTERFACE, or NULL to reset all language types. Defaults
-   *   to NULL.
-   */
-  public function reset($type = NULL) {
-    if (!isset($type)) {
-      $this->languages = array();
-      $this->initialized = FALSE;
-    }
-    elseif (isset($this->languages[$type])) {
-      unset($this->languages[$type]);
-    }
-  }
-
-  /**
-   * Returns whether or not the site has more than one language enabled.
-   *
-   * @return bool
-   *   TRUE if more than one language is enabled, FALSE otherwise.
+   * {@inheritdoc}
    */
   public function isMultilingual() {
-    if (!isset($this->state)) {
-      // No state service in install time.
-      return FALSE;
+    return FALSE;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getLanguageTypes() {
+    return array(LanguageInterface::TYPE_INTERFACE, LanguageInterface::TYPE_CONTENT, LanguageInterface::TYPE_URL);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getDefinedLanguageTypesInfo() {
+    // This needs to have the same return value as
+    // language_language_type_info(), so that even if the Language module is
+    // not defined, users of this information, such as the Views module, can
+    // access names and descriptions of the default language types.
+    return array(
+      LanguageInterface::TYPE_INTERFACE => array(
+        'name' => $this->t('User interface text'),
+        'description' => $this->t('Order of language detection methods for user interface text. If a translation of user interface text is available in the detected language, it will be displayed.'),
+        'locked' => TRUE,
+      ),
+      LanguageInterface::TYPE_CONTENT => array(
+        'name' => $this->t('Content'),
+        'description' => $this->t('Order of language detection methods for content. If a version of content is available in the detected language, it will be displayed.'),
+        'locked' => TRUE,
+      ),
+      LanguageInterface::TYPE_URL => array(
+        'locked' => TRUE,
+      ),
+    );
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getCurrentLanguage($type = LanguageInterface::TYPE_INTERFACE) {
+    return $this->getDefaultLanguage();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function reset($type = NULL) {
+    return $this;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getDefaultLanguage() {
+    return $this->defaultLanguage->get();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getLanguages($flags = LanguageInterface::STATE_CONFIGURABLE) {
+    // Initialize master language list.
+    if (!isset($this->languages)) {
+      // No language module, so use the default language only.
+      $default = $this->getDefaultLanguage();
+      $this->languages = array($default->id => $default);
+      // Add the special languages, they will be filtered later if needed.
+      $this->languages += $this->getDefaultLockedLanguages($default->weight);
     }
-    return ($this->state->get('language_count') ?: 1) > 1;
+
+    // Filter the full list of languages based on the value of the $all flag. By
+    // default we remove the locked languages, but the caller may request for
+    // those languages to be added as well.
+    $filtered_languages = array();
+
+    // Add the site's default language if flagged as allowed value.
+    if ($flags & LanguageInterface::STATE_SITE_DEFAULT) {
+      $default = isset($default) ? $default : $this->getDefaultLanguage();
+      // Rename the default language. But we do not want to do this globally,
+      // if we're acting on a global object, so clone the object first.
+      $default = clone $default;
+      $default->name = $this->t("Site's default language (@lang_name)", array('@lang_name' => $default->name));
+      $filtered_languages['site_default'] = $default;
+    }
+
+    foreach ($this->languages as $id => $language) {
+      if (($language->isLocked() && ($flags & LanguageInterface::STATE_LOCKED)) || (!$language->isLocked() && ($flags & LanguageInterface::STATE_CONFIGURABLE))) {
+        $filtered_languages[$id] = $language;
+      }
+    }
+
+    return $filtered_languages;
   }
 
   /**
-   * Returns an array of the available language types.
-   *
-   * @return array()
-   *   An array of all language types.
+   * {@inheritdoc}
    */
-  protected function getLanguageTypes() {
-    return language_types_get_all();
+  public function getNativeLanguages() {
+    // In a language unaware site we don't have translated languages.
+    return $this->getLanguages();
   }
 
   /**
-   * Returns a language object representing the site's default language.
-   *
-   * @return \Drupal\Core\Language\Language
-   *   A language object.
+   * {@inheritdoc}
    */
-  protected function getLanguageDefault() {
-    $default_info = variable_get('language_default', array(
-      'id' => 'en',
-      'name' => 'English',
-      'direction' => 0,
-      'weight' => 0,
-      'locked' => 0,
-    ));
-    $default_info['default'] = TRUE;
-    return new Language($default_info);
+  public function getLanguage($langcode) {
+    $languages = $this->getLanguages(LanguageInterface::STATE_ALL);
+    return isset($languages[$langcode]) ? $languages[$langcode] : NULL;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getLanguageName($langcode) {
+    if ($langcode == LanguageInterface::LANGCODE_NOT_SPECIFIED) {
+      return $this->t('None');
+    }
+    if ($language = $this->getLanguage($langcode)) {
+      return $language->name;
+    }
+    if (empty($langcode)) {
+      return $this->t('Unknown');
+    }
+    return $this->t('Unknown (@langcode)', array('@langcode' => $langcode));
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getDefaultLockedLanguages($weight = 0) {
+    $languages = array();
+
+    $locked_language = array(
+      'default' => FALSE,
+      'locked' => TRUE,
+    );
+    // This is called very early while initializing the language system. Prevent
+    // early t() calls by using the TranslationWrapper.
+    $languages[LanguageInterface::LANGCODE_NOT_SPECIFIED] = new Language(array(
+      'id' => LanguageInterface::LANGCODE_NOT_SPECIFIED,
+      'name' => new TranslationWrapper('Not specified'),
+      'weight' => ++$weight,
+    ) + $locked_language);
+
+    $languages[LanguageInterface::LANGCODE_NOT_APPLICABLE] = new Language(array(
+      'id' => LanguageInterface::LANGCODE_NOT_APPLICABLE,
+      'name' => new TranslationWrapper('Not applicable'),
+      'weight' => ++$weight,
+    ) + $locked_language);
+
+    return $languages;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function isLanguageLocked($langcode) {
+    $language = $this->getLanguage($langcode);
+    return ($language ? $language->isLocked() : FALSE);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getFallbackCandidates(array $context = array()) {
+    return array(LanguageInterface::LANGCODE_DEFAULT);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getLanguageSwitchLinks($type, $path) {
+    return array();
   }
 
   /**
    * Some common languages with their English and native names.
    *
    * Language codes are defined by the W3C language tags document for
-   * interoperability. Language codes typically have a language and optionally,
-   * a script or regional variant name. See
-   * http://www.w3.org/International/articles/language-tags/ for more information.
+   * interoperability. Language codes typically have a language and, optionally,
+   * a script or regional variant name. See:
+   * http://www.w3.org/International/articles/language-tags/ for more
+   * information.
    *
    * This list is based on languages available from localize.drupal.org. See
    * http://localize.drupal.org/issues for information on how to add languages
@@ -213,7 +268,7 @@ class LanguageManager {
     return array(
       'af' => array('Afrikaans', 'Afrikaans'),
       'am' => array('Amharic', 'አማርኛ'),
-      'ar' => array('Arabic', /* Left-to-right marker "‭" */ 'العربية', Language::DIRECTION_RTL),
+      'ar' => array('Arabic', /* Left-to-right marker "‭" */ 'العربية', LanguageInterface::DIRECTION_RTL),
       'ast' => array('Asturian', 'Asturianu'),
       'az' => array('Azerbaijani', 'Azərbaycanca'),
       'be' => array('Belarusian', 'Беларуская'),
@@ -233,7 +288,7 @@ class LanguageManager {
       'es' => array('Spanish', 'Español'),
       'et' => array('Estonian', 'Eesti'),
       'eu' => array('Basque', 'Euskera'),
-      'fa' => array('Persian, Farsi', /* Left-to-right marker "‭" */ 'فارسی', Language::DIRECTION_RTL),
+      'fa' => array('Persian, Farsi', /* Left-to-right marker "‭" */ 'فارسی', LanguageInterface::DIRECTION_RTL),
       'fi' => array('Finnish', 'Suomi'),
       'fil' => array('Filipino', 'Filipino'),
       'fo' => array('Faeroese', 'Føroyskt'),
@@ -244,7 +299,7 @@ class LanguageManager {
       'gl' => array('Galician', 'Galego'),
       'gsw-berne' => array('Swiss German', 'Schwyzerdütsch'),
       'gu' => array('Gujarati', 'ગુજરાતી'),
-      'he' => array('Hebrew', /* Left-to-right marker "‭" */ 'עברית', Language::DIRECTION_RTL),
+      'he' => array('Hebrew', /* Left-to-right marker "‭" */ 'עברית', LanguageInterface::DIRECTION_RTL),
       'hi' => array('Hindi', 'हिन्दी'),
       'hr' => array('Croatian', 'Hrvatski'),
       'ht' => array('Haitian Creole', 'Kreyòl ayisyen'),
@@ -300,12 +355,32 @@ class LanguageManager {
       'tyv' => array('Tuvan', 'Тыва дыл'),
       'ug' => array('Uyghur', 'Уйғур'),
       'uk' => array('Ukrainian', 'Українська'),
-      'ur' => array('Urdu', /* Left-to-right marker "‭" */ 'اردو', Language::DIRECTION_RTL),
+      'ur' => array('Urdu', /* Left-to-right marker "‭" */ 'اردو', LanguageInterface::DIRECTION_RTL),
       'vi' => array('Vietnamese', 'Tiếng Việt'),
       'xx-lolspeak' => array('Lolspeak', 'Lolspeak'),
       'zh-hans' => array('Chinese, Simplified', '简体中文'),
       'zh-hant' => array('Chinese, Traditional', '繁體中文'),
     );
+  }
+
+  /**
+   * {@inheritdoc}
+   *
+   * This function is a noop since the configuration cannot be overridden by
+   * language unless the Language module is enabled. That replaces the default
+   * language manager with a configurable language manager.
+   *
+   * @see \Drupal\language\ConfigurableLanguageManager::setConfigOverrideLanguage()
+   */
+  public function setConfigOverrideLanguage(LanguageInterface $language = NULL) {
+    return $this;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getConfigOverrideLanguage() {
+    return $this->getCurrentLanguage();
   }
 
 }

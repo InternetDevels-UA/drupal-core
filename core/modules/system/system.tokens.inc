@@ -7,6 +7,9 @@
  * This file handles tokens for the global 'site' and 'date' tokens.
  */
 
+use Drupal\Component\Utility\String;
+use Drupal\Component\Utility\Xss;
+
 /**
  * Implements hook_token_info().
  */
@@ -61,11 +64,11 @@ function system_token_info() {
   );
   $date['custom'] = array(
     'name' => t("Custom format"),
-    'description' => t("A date in a custom format. See !php-date for details.", array('!php-date' => l(t('the PHP documentation'), 'http://php.net/manual/function.date.php'))),
+    'description' => t('A date in a custom format. See <a href="http://php.net/manual/function.date.php">the PHP documentation</a> for details.'),
   );
   $date['since'] = array(
     'name' => t("Time-since"),
-    'description' => t("A date in 'time-since' format. (%date)", array('%date' => format_interval(REQUEST_TIME - 360, 2))),
+    'description' => t("A date in 'time-since' format. (%date)", array('%date' => \Drupal::service('date.formatter')->formatInterval(REQUEST_TIME - 360, 2))),
   );
   $date['raw'] = array(
     'name' => t("Raw timestamp"),
@@ -104,12 +107,12 @@ function system_tokens($type, $tokens, array $data = array(), array $options = a
       switch ($name) {
         case 'name':
           $site_name = \Drupal::config('system.site')->get('name');
-          $replacements[$original] = $sanitize ? check_plain($site_name) : $site_name;
+          $replacements[$original] = $sanitize ? String::checkPlain($site_name) : $site_name;
           break;
 
         case 'slogan':
           $slogan = \Drupal::config('system.site')->get('slogan');
-          $replacements[$original] = $sanitize ? filter_xss_admin($slogan) : $slogan;
+          $replacements[$original] = $sanitize ? Xss::filterAdmin($slogan) : $slogan;
           break;
 
         case 'mail':
@@ -117,15 +120,15 @@ function system_tokens($type, $tokens, array $data = array(), array $options = a
           break;
 
         case 'url':
-          $replacements[$original] = url('<front>', $url_options);
+          $replacements[$original] = \Drupal::url('<front>', array(), $url_options);
           break;
 
         case 'url-brief':
-          $replacements[$original] = preg_replace(array('!^https?://!', '!/$!'), '', url('<front>', $url_options));
+          $replacements[$original] = preg_replace(array('!^https?://!', '!/$!'), '', \Drupal::url('<front>', array(), $url_options));
           break;
 
         case 'login-url':
-          $replacements[$original] = url('user', $url_options);
+          $replacements[$original] = \Drupal::url('user.page', [], $url_options);
           break;
       }
     }
@@ -154,11 +157,11 @@ function system_tokens($type, $tokens, array $data = array(), array $options = a
           break;
 
         case 'since':
-          $replacements[$original] = format_interval((REQUEST_TIME - $date), 2, $langcode);
+          $replacements[$original] = \Drupal::service('date.formatter')->formatInterval((REQUEST_TIME - $date), 2, $langcode);
           break;
 
         case 'raw':
-          $replacements[$original] = $sanitize ? check_plain($date) : $date;
+          $replacements[$original] = $sanitize ? String::checkPlain($date) : $date;
           break;
       }
     }

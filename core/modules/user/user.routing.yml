@@ -31,20 +31,23 @@ user.admin_index:
   path: '/admin/config/people'
   defaults:
     _content: '\Drupal\system\Controller\SystemController::systemAdminMenuBlockPage'
+    _title: 'People'
   requirements:
     _permission: 'access administration pages'
 
-user.account_settings:
+entity.user.admin_form:
   path: '/admin/config/people/accounts'
   defaults:
     _form: '\Drupal\user\AccountSettingsForm'
+    _title: 'Account settings'
   requirements:
     _permission: 'administer account settings'
 
 user.admin_account:
   path: '/admin/people'
   defaults:
-    _controller: '\Drupal\user\Controller\UserAdmin::userList'
+    _entity_list: 'user'
+    _title: 'People'
   requirements:
     _permission: 'administer users'
 
@@ -52,6 +55,7 @@ user.admin_create:
   path: '/admin/people/create'
   defaults:
     _entity_form: 'user.register'
+    _title: 'Add user'
   requirements:
     _permission: 'administer users'
 
@@ -59,15 +63,17 @@ user.admin_permissions:
   path: '/admin/people/permissions'
   defaults:
     _form: '\Drupal\user\Form\UserPermissionsForm'
+    _title: 'Permissions'
   requirements:
     _permission: 'administer permissions'
 
-user.admin_permission:
-  path: '/admin/people/permissions/{role_id}'
+entity.user_role.edit_permissions_form:
+  path: '/admin/people/permissions/{user_role}'
   defaults:
     _form: '\Drupal\user\Form\UserPermissionsRoleSpecificForm'
+    _title: 'Edit role'
   requirements:
-    _permission: 'administer permissions'
+    _entity_access: 'user_role.update'
 
 user.multiple_cancel_confirm:
   path: '/admin/people/cancel'
@@ -81,6 +87,7 @@ user.role_list:
   path: '/admin/people/roles'
   defaults:
     _entity_list: 'user_role'
+    _title: 'Roles'
   requirements:
     _permission: 'administer permissions'
 
@@ -88,20 +95,23 @@ user.role_add:
   path: '/admin/people/roles/add'
   defaults:
     _entity_form: user_role.default
+    _title: 'Add role'
   requirements:
     _permission: 'administer permissions'
 
-user.role_edit:
+entity.user_role.edit_form:
   path: '/admin/people/roles/manage/{user_role}'
   defaults:
     _entity_form: user_role.default
+    _title: 'Edit role'
   requirements:
     _entity_access: user_role.update
 
-user.role_delete:
+entity.user_role.delete_form:
   path: '/admin/people/roles/manage/{user_role}/delete'
   defaults:
     _entity_form: user_role.delete
+    _title: 'Delete role'
   requirements:
     _entity_access: user_role.delete
 
@@ -112,15 +122,18 @@ user.pass:
     _title: 'Request new password'
   requirements:
     _access: 'TRUE'
+  options:
+    _maintenance_access: TRUE
 
 user.page:
   path: '/user'
   defaults:
     _content: '\Drupal\user\Controller\UserController::userPage'
+    _title: 'Log in'
   requirements:
     _access: 'TRUE'
 
-user.view:
+entity.user.canonical:
   path: '/user/{user}'
   defaults:
     _entity_view: 'user.full'
@@ -135,19 +148,26 @@ user.login:
     _title: 'Log in'
   requirements:
     _access: 'TRUE'
+  options:
+    _maintenance_access: TRUE
 
-user.edit:
+entity.user.edit_form:
   path: '/user/{user}/edit'
   defaults:
     _entity_form: 'user.default'
+    _title_callback: 'Drupal\user\Controller\UserController::userTitle'
+  options:
+    _admin_route: TRUE
   requirements:
     _entity_access: 'user.update'
 
-user.cancel:
+entity.user.cancel_form:
   path: '/user/{user}/cancel'
   defaults:
     _title: 'Cancel account'
     _entity_form: 'user.cancel'
+  options:
+    _admin_route: TRUE
   requirements:
     _entity_access: 'user.delete'
 
@@ -162,10 +182,11 @@ user.cancel_confirm:
     _entity_access: 'user.delete'
 
 user.reset:
-  path: '/user/reset/{uid}/{timestamp}/{hash}/{operation}'
+  path: '/user/reset/{uid}/{timestamp}/{hash}'
   defaults:
-    _content: '\Drupal\user\Form\UserForm::resetPass'
+    _content: '\Drupal\user\Controller\UserController::resetPass'
     _title: 'Reset password'
-    operation: NULL
   requirements:
     _access: 'TRUE'
+  options:
+    _maintenance_access: TRUE

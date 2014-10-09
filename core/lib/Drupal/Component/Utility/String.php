@@ -9,13 +9,16 @@ namespace Drupal\Component\Utility;
 
 /**
  * Provides helpers to operate on strings.
+ *
+ * @ingroup utility
  */
 class String {
 
   /**
    * Encodes special characters in a plain-text string for display as HTML.
    *
-   * Also validates strings as UTF-8.
+   * Also validates strings as UTF-8. All processed strings are also
+   * automatically flagged as safe markup strings for rendering.
    *
    * @param string $text
    *   The text to be checked or processed.
@@ -24,12 +27,13 @@ class String {
    *   An HTML safe version of $text, or an empty string if $text is not
    *   valid UTF-8.
    *
-   * @see drupal_validate_utf8()
-   *
    * @ingroup sanitization
+   *
+   * @see drupal_validate_utf8()
+   * @see \Drupal\Component\Utility\SafeMarkup
    */
   public static function checkPlain($text) {
-    return htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+    return SafeMarkup::set(htmlspecialchars($text, ENT_QUOTES, 'UTF-8'));
   }
 
   /**
@@ -54,37 +58,42 @@ class String {
    *
    * This function replaces variable placeholders in a string with the requested
    * values and escapes the values so they can be safely displayed as HTML. It
-   * should be used on any unknown text that is intended to be printed to an HTML
-   * page (especially text that may have come from untrusted users, since in that
-   * case it prevents cross-site scripting and other security problems).
+   * should be used on any unknown text that is intended to be printed to an
+   * HTML page (especially text that may have come from untrusted users, since
+   * in that case it prevents cross-site scripting and other security problems).
    *
    * In most cases, you should use t() rather than calling this function
    * directly, since it will translate the text (on non-English-only sites) in
    * addition to formatting it.
    *
    * @param $string
-   *   A string containing placeholders.
+   *   A string containing placeholders. The string itself is not escaped, any
+   *   unsafe content must be in $args and inserted via placeholders.
    * @param $args
    *   An associative array of replacements to make. Occurrences in $string of
-   *   any key in $args are replaced with the corresponding value, after optional
-   *   sanitization and formatting. The type of sanitization and formatting
-   *   depends on the first character of the key:
+   *   any key in $args are replaced with the corresponding value, after
+   *   optional sanitization and formatting. The type of sanitization and
+   *   formatting depends on the first character of the key:
    *   - @variable: Escaped to HTML using String::checkPlain(). Use this as the
    *     default choice for anything displayed on a page on the site.
    *   - %variable: Escaped to HTML and formatted using String::placeholder(),
-   *     which makes it display as <em>emphasized</em> text.
+   *     which makes the following HTML code:
+   *     @code
+   *       <em class="placeholder">text output here.</em>
+   *     @endcode
    *   - !variable: Inserted as is, with no sanitization or formatting. Only use
    *     this for text that has already been prepared for HTML display (for
    *     example, user-supplied text that has already been run through
    *     String::checkPlain() previously, or is expected to contain some limited
-   *     HTML tags and has already been run through filter_xss() previously).
+   *     HTML tags and has already been run through
+   *     \Drupal\Component\Utility\Xss::filter() previously).
    *
+   * @return mixed
+   *   The formatted string, or FALSE if no args specified.
    *
-   * @see t()
    * @ingroup sanitization
    *
-   * @return mixte
-   *  The formatted string with placeholders inserted, or FALSE if no args specified.
+   * @see t()
    */
   public static function format($string, array $args = array()) {
     // Transform arguments before inserting them.
@@ -105,7 +114,7 @@ class String {
           // Pass-through.
       }
     }
-    return strtr($string, $args);
+    return SafeMarkup::set(strtr($string, $args));
   }
 
   /**
@@ -120,7 +129,8 @@ class String {
    *   The formatted text (html).
    */
   public static function placeholder($text) {
-    return '<em class="placeholder">' . static::checkPlain($text) . '</em>';
+    return SafeMarkup::set('<em class="placeholder">' . static::checkPlain($text) . '</em>');
   }
+
 
 }

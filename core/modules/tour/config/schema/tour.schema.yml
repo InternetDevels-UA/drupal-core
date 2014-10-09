@@ -1,7 +1,7 @@
 # Schema for the configuration files of the Tour module.
 
 tour.tour.*:
-  type: mapping
+  type: config_entity
   label: 'Tour settings'
   mapping:
     id:
@@ -10,15 +10,15 @@ tour.tour.*:
     label:
       type: label
       label: 'Label'
-    langcode:
+    module:
       type: string
-      label: 'Language'
-    paths:
+      label: 'Providing module'
+    routes:
       type: sequence
-      label: 'Path settings'
+      label: 'Route settings'
       sequence:
-        - type: path
-          label: 'Path'
+        - type: route
+          label: 'Route'
     tips:
       type: sequence
       label: 'Tips'
@@ -42,6 +42,9 @@ tour.tip:
     weight:
       type: integer
       label: 'Weight'
+    location:
+      type: string
+      label: 'Location'
     attributes:
       type: sequence
       label: 'Attributes'
@@ -56,5 +59,3 @@ tour.tip.text:
     body:
       type: text
       label: 'Body'
-
-

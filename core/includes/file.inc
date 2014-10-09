@@ -5,9 +5,11 @@
  * API for handling file uploads and server file management.
  */
 
-use Drupal\Core\StreamWrapper\LocalStream;
-use Drupal\Component\PhpStorage\MTimeProtectedFastFileStorage;
+use Drupal\Component\Utility\UrlHelper;
+use Drupal\Component\PhpStorage\FileStorage;
+use Drupal\Component\Utility\Bytes;
 use Drupal\Component\Utility\String;
+use Drupal\Core\Site\Settings;
 use Drupal\Core\StreamWrapper\PublicStream;
 
 /**
@@ -41,6 +43,17 @@ const STREAM_WRAPPERS_WRITE = 0x0008;
  * Stream wrapper bit flag -- exposed in the UI and potentially web accessible.
  */
 const STREAM_WRAPPERS_VISIBLE = 0x0010;
+
+
+/**
+ * Default mode for new directories. See drupal_chmod().
+ */
+const FILE_CHMOD_DIRECTORY = 0775;
+
+/**
+ * Default mode for new files. See drupal_chmod().
+ */
+const FILE_CHMOD_FILE = 0664;
 
 /**
  * Composite stream wrapper bit flags that are usually used as the types.
@@ -97,8 +110,10 @@ define('STREAM_WRAPPERS_LOCAL_NORMAL', STREAM_WRAPPERS_LOCAL | STREAM_WRAPPERS_N
  * - filesize: The size of the file in bytes.
  * - status: A bitmapped field indicating the status of the file. The first 8
  *   bits are reserved for Drupal core. The least significant bit indicates
- *   temporary (0) or permanent (1). Temporary files older than
- *   DRUPAL_MAXIMUM_TEMP_FILE_AGE will be removed during cron runs.
+ *   temporary (0) or permanent (1). Temporary files will be removed during
+ *   cron runs if they are older than the configuration value
+ *   "system.file.temporary_maximum_age", and if clean-up is enabled. Permanent
+ *   files will not be removed.
  * - timestamp: UNIX timestamp for the date the file was added to the database.
  */
 
@@ -130,9 +145,10 @@ const FILE_EXISTS_ERROR = 2;
 /**
  * Indicates that the file is permanent and should not be deleted.
  *
- * Temporary files older than DRUPAL_MAXIMUM_TEMP_FILE_AGE will be removed
- * during cron runs, but permanent files will not be removed during the file
- * garbage collection process.
+ * Temporary files older than the system.file.temporary_maximum_age
+ * configuration value will be, if clean-up not disabled, removed during cron
+ * runs, but permanent files will not be removed during the file garbage
+ * collection process.
  */
 const FILE_STATUS_PERMANENT = 1;
 
@@ -188,15 +204,21 @@ const FILE_STATUS_PERMANENT = 1;
  * @see hook_stream_wrappers_alter()
  */
 function file_get_stream_wrappers($filter = STREAM_WRAPPERS_ALL) {
-  $wrappers_storage = &drupal_static(__FUNCTION__);
+  $wrappers_storage = &drupal_static(__FUNCTION__, array());
 
-  if (!isset($wrappers_storage)) {
-    $wrappers = \Drupal::moduleHandler()->invokeAll('stream_wrappers');
-    foreach ($wrappers as $scheme => $info) {
-      // Add defaults.
-      $wrappers[$scheme] += array('type' => STREAM_WRAPPERS_NORMAL);
+  if (empty($wrappers_storage)) {
+    // Initialize $wrappers_storage, so that we are not calling this method
+    // repeatedly if no stream wrappers exist.
+    $wrappers_storage[STREAM_WRAPPERS_ALL] = array();
+    $wrappers = array();
+    if (\Drupal::hasService('module_handler')) {
+      $wrappers = \Drupal::moduleHandler()->invokeAll('stream_wrappers');
+      foreach ($wrappers as $scheme => $info) {
+        // Add defaults.
+        $wrappers[$scheme] += array('type' => STREAM_WRAPPERS_NORMAL);
+      }
+      \Drupal::moduleHandler()->alter('stream_wrappers', $wrappers);
     }
-    drupal_alter('stream_wrappers', $wrappers);
     $existing = stream_get_wrappers();
     foreach ($wrappers as $scheme => $info) {
       // We only register classes that implement our interface.
@@ -254,18 +276,22 @@ function file_stream_wrapper_get_class($scheme) {
 /**
  * Returns the scheme of a URI (e.g. a stream).
  *
- * @param $uri
- *   A stream, referenced as "scheme://target".
+ * @param string $uri
+ *   A stream, referenced as "scheme://target"  or "data:target".
  *
- * @return
+ * @return string
  *   A string containing the name of the scheme, or FALSE if none. For example,
  *   the URI "public://example.txt" would return "public".
  *
  * @see file_uri_target()
  */
 function file_uri_scheme($uri) {
-  $position = strpos($uri, '://');
-  return $position ? substr($uri, 0, $position) : FALSE;
+  if (preg_match('/^([\w\-]+):\/\/|^(data):/', $uri, $matches)) {
+    // The scheme will always be the last element in the matches array.
+    return array_pop($matches);
+  }
+
+  return FALSE;
 }
 
 /**
@@ -290,10 +316,10 @@ function file_stream_wrapper_valid_scheme($scheme) {
 /**
  * Returns the part of a URI after the schema.
  *
- * @param $uri
- *   A stream, referenced as "scheme://target".
+ * @param string $uri
+ *   A stream, referenced as "scheme://target" or "data:target".
  *
- * @return
+ * @return string|bool
  *   A string containing the target (path), or FALSE if none.
  *   For example, the URI "public://sample/test.txt" would return
  *   "sample/test.txt".
@@ -301,10 +327,12 @@ function file_stream_wrapper_valid_scheme($scheme) {
  * @see file_uri_scheme()
  */
 function file_uri_target($uri) {
-  $data = explode('://', $uri, 2);
+  // Remove the scheme from the URI and remove erroneous leading or trailing,
+  // forward-slashes and backslashes.
+  $target = trim(preg_replace('/^[\w\-]+:\/\/|^data:/', '', $uri), '\/');
 
-  // Remove erroneous leading or trailing, forward-slashes and backslashes.
-  return count($data) == 2 ? trim($data[1], '\/') : FALSE;
+  // If nothing was replaced, the URI doesn't have a valid scheme.
+  return $target !== $uri ? $target : FALSE;
 }
 
 /**
@@ -417,22 +445,23 @@ function file_stream_wrapper_get_instance_by_scheme($scheme) {
  * - "shipped files", i.e. those outside of the files directory, which ship as
  *   part of Drupal core or contributed modules or themes.
  *
- * @param $uri
+ * @param string $uri
  *   The URI to a file for which we need an external URL, or the path to a
  *   shipped file.
  *
- * @return
+ * @return string
  *   A string containing a URL that may be used to access the file.
  *   If the provided string already contains a preceding 'http', 'https', or
  *   '/', nothing is done and the same string is returned. If a stream wrapper
  *   could not be found to generate an external URL, then FALSE is returned.
  *
  * @see http://drupal.org/node/515192
+ * @see file_url_transform_relative()
  */
 function file_create_url($uri) {
   // Allow the URI to be altered, e.g. to serve a file from a CDN or static
   // file server.
-  drupal_alter('file_url', $uri);
+  \Drupal::moduleHandler()->alter('file_url', $uri);
 
   $scheme = file_uri_scheme($uri);
 
@@ -450,12 +479,12 @@ function file_create_url($uri) {
     else {
       // If this is not a properly formatted stream, then it is a shipped file.
       // Therefore, return the urlencoded URI with the base URL prepended.
-      return $GLOBALS['base_url'] . '/' . drupal_encode_path($uri);
+      return $GLOBALS['base_url'] . '/' . UrlHelper::encodePath($uri);
     }
   }
-  elseif ($scheme == 'http' || $scheme == 'https') {
-    // Check for HTTP so that we don't have to implement getExternalUrl() for
-    // the HTTP wrapper.
+  elseif ($scheme == 'http' || $scheme == 'https' || $scheme == 'data') {
+    // Check for HTTP and data URI-encoded URLs so that we don't have to
+    // implement getExternalUrl() for the HTTP and data schemes.
     return $uri;
   }
   else {
@@ -467,6 +496,41 @@ function file_create_url($uri) {
       return FALSE;
     }
   }
+}
+
+/**
+ * Transforms an absolute URL of a local file to a relative URL.
+ *
+ * May be useful to prevent problems on multisite set-ups and prevent mixed
+ * content errors when using HTTPS + HTTP.
+ *
+ * @param string $file_url
+ *   A file URL of a local file as generated by file_create_url().
+ *
+ * @return string
+ *   If the file URL indeed pointed to a local file and was indeed absolute,
+ *   then the transformed, relative URL to the local file. Otherwise: the
+ *   original value of $file_url.
+ *
+ * @see file_create_url()
+ */
+function file_url_transform_relative($file_url) {
+  // Unfortunately, we pretty much have to duplicate Symfony's
+  // Request::getHttpHost() method because Request::getPort() may return NULL
+  // instead of a port number.
+  $http_host = '';
+  $request = \Drupal::request();
+  $host = $request->getHost();
+  $scheme = $request->getScheme();
+  $port = $request->getPort() ?: 80;
+  if (('http' == $scheme && $port == 80) || ('https' == $scheme && $port == 443)) {
+    $http_host = $host;
+  }
+  else {
+    $http_host = $host . ':' . $port;
+  }
+
+  return preg_replace('|^https?://' . $http_host . '|', '', $file_url);
 }
 
 /**
@@ -482,15 +546,12 @@ function file_create_url($uri) {
  *   A bitmask to indicate if the directory should be created if it does
  *   not exist (FILE_CREATE_DIRECTORY) or made writable if it is read-only
  *   (FILE_MODIFY_PERMISSIONS).
- * @param int $mode
- *   Octal value for the permissions. Consult PHP chmod() documentation for
- *   more information.
  *
  * @return
  *   TRUE if the directory exists (or was created) and is writable. FALSE
  *   otherwise.
  */
-function file_prepare_directory(&$directory, $options = FILE_MODIFY_PERMISSIONS, $mode = NULL) {
+function file_prepare_directory(&$directory, $options = FILE_MODIFY_PERMISSIONS) {
   if (!file_stream_wrapper_valid_scheme(file_uri_scheme($directory))) {
     // Only trim if we're not dealing with a stream.
     $directory = rtrim($directory, '/\\');
@@ -501,14 +562,14 @@ function file_prepare_directory(&$directory, $options = FILE_MODIFY_PERMISSIONS,
     // Let mkdir() recursively create directories and use the default directory
     // permissions.
     if ($options & FILE_CREATE_DIRECTORY) {
-      return @drupal_mkdir($directory, $mode, TRUE);
+      return @drupal_mkdir($directory, NULL, TRUE);
     }
     return FALSE;
   }
   // The directory exists, so check to see if it is writable.
   $writable = is_writable($directory);
   if (!$writable && ($options & FILE_MODIFY_PERMISSIONS)) {
-    return drupal_chmod($directory, $mode);
+    return drupal_chmod($directory);
   }
 
   return $writable;
@@ -531,43 +592,56 @@ function file_ensure_htaccess() {
 /**
  * Creates a .htaccess file in the given directory.
  *
- * @param $directory
+ * @param string $directory
  *   The directory.
- * @param $private
- *   FALSE indicates that $directory should be an open and public directory.
- *   The default is TRUE which indicates a private and protected directory.
+ * @param bool $private
+ *   (Optional) FALSE indicates that $directory should be a web-accessible
+ *   directory. Defaults to TRUE which indicates a private directory.
+ * @param bool $force_overwrite
+ *   (Optional) Set to TRUE to attempt to overwrite the existing .htaccess file
+ *   if one is already present. Defaults to FALSE.
  */
-function file_save_htaccess($directory, $private = TRUE) {
+function file_save_htaccess($directory, $private = TRUE, $force_overwrite = FALSE) {
   if (file_uri_scheme($directory)) {
-    $directory = file_stream_wrapper_uri_normalize($directory);
+    $htaccess_path = file_stream_wrapper_uri_normalize($directory . '/.htaccess');
   }
   else {
     $directory = rtrim($directory, '/\\');
+    $htaccess_path = $directory . '/.htaccess';
   }
-  $htaccess_path =  $directory . '/.htaccess';
 
-  if (file_exists($htaccess_path)) {
+  if (file_exists($htaccess_path) && !$force_overwrite) {
     // Short circuit if the .htaccess file already exists.
-    return;
+    return TRUE;
   }
-
-  if ($private) {
-    // Private .htaccess file.
-    $htaccess_lines = MTimeProtectedFastFileStorage::HTACCESS;
-  }
-  else {
-    // Public .htaccess file.
-    $htaccess_lines = "SetHandler Drupal_Security_Do_Not_Remove_See_SA_2006_006\nOptions None\nOptions +FollowSymLinks";
-  }
+  $htaccess_lines = file_htaccess_lines($private);
 
   // Write the .htaccess file.
-  if (file_put_contents($htaccess_path, $htaccess_lines)) {
-    drupal_chmod($htaccess_path, 0444);
+  if (file_exists($directory) && is_writable($directory) && file_put_contents($htaccess_path, $htaccess_lines)) {
+    return drupal_chmod($htaccess_path, 0444);
   }
   else {
     $variables = array('%directory' => $directory, '!htaccess' => '<br />' . nl2br(String::checkPlain($htaccess_lines)));
-    watchdog('security', "Security warning: Couldn't write .htaccess file. Please create a .htaccess file in your %directory directory which contains the following lines: <code>!htaccess</code>", $variables, WATCHDOG_ERROR);
+    \Drupal::logger('security')->error("Security warning: Couldn't write .htaccess file. Please create a .htaccess file in your %directory directory which contains the following lines: <code>!htaccess</code>", $variables);
+    return FALSE;
   }
+}
+
+/**
+ * Returns the standard .htaccess lines that Drupal writes to file directories.
+ *
+ * @param bool $private
+ *   (Optional) Set to FALSE to return the .htaccess lines for a web-accessible
+ *   public directory. The default is TRUE, which returns the .htaccess lines
+ *   for a private directory that should not be web-accessible.
+ *
+ * @return string
+ *   The desired contents of the .htaccess file.
+ *
+ * @see file_create_htaccess()
+ */
+function file_htaccess_lines($private = TRUE) {
+  return FileStorage::htaccessLines($private);
 }
 
 /**
@@ -584,7 +658,7 @@ function file_save_htaccess($directory, $private = TRUE) {
  *   TRUE if the URI is allowed.
  */
 function file_valid_uri($uri) {
-  // Assert that the URI has an allowed scheme. Barepaths are not allowed.
+  // Assert that the URI has an allowed scheme. Bare paths are not allowed.
   $uri_scheme = file_uri_scheme($uri);
   if (!file_stream_wrapper_valid_scheme($uri_scheme)) {
     return FALSE;
@@ -598,16 +672,14 @@ function file_valid_uri($uri) {
  * This is a powerful function that in many ways performs like an advanced
  * version of copy().
  * - Checks if $source and $destination are valid and readable/writable.
- * - Checks that $source is not equal to $destination; if they are an error
- *   is reported.
  * - If file already exists in $destination either the call will error out,
  *   replace the file or rename the file based on the $replace parameter.
  * - If the $source and $destination are equal, the behavior depends on the
- *   $replace parameter. FILE_EXIST_REPLACE will error out. FILE_EXIST_RENAME
+ *   $replace parameter. FILE_EXISTS_REPLACE will error out. FILE_EXISTS_RENAME
  *   will rename the file until the $destination is unique.
  * - Provides a fallback using realpaths if the move fails using stream
  *   wrappers. This can occur because PHP's copy() function does not properly
- *   support streams if safe_mode or open_basedir are enabled. See
+ *   support streams if open_basedir is enabled. See
  *   https://bugs.php.net/bug.php?id=60456
  *
  * @param $source
@@ -630,16 +702,17 @@ function file_valid_uri($uri) {
  */
 function file_unmanaged_copy($source, $destination = NULL, $replace = FILE_EXISTS_RENAME) {
   $original_source = $source;
+  $logger = \Drupal::logger('file');
 
   // Assert that the source file actually exists.
   if (!file_exists($source)) {
     // @todo Replace drupal_set_message() calls with exceptions instead.
     drupal_set_message(t('The specified file %file could not be copied because no file by that name exists. Please check that you supplied the correct filename.', array('%file' => $original_source)), 'error');
     if (($realpath = drupal_realpath($original_source)) !== FALSE) {
-      watchdog('file', 'File %file (%realpath) could not be copied because it does not exist.', array('%file' => $original_source, '%realpath' => $realpath));
+      $logger->notice('File %file (%realpath) could not be copied because it does not exist.', array('%file' => $original_source, '%realpath' => $realpath));
     }
     else {
-      watchdog('file', 'File %file could not be copied because it does not exist.', array('%file' => $original_source));
+      $logger->notice('File %file could not be copied because it does not exist.', array('%file' => $original_source));
     }
     return FALSE;
   }
@@ -660,7 +733,7 @@ function file_unmanaged_copy($source, $destination = NULL, $replace = FILE_EXIST
     $dirname = drupal_dirname($destination);
     if (!file_prepare_directory($dirname)) {
       // The destination is not valid.
-      watchdog('file', 'File %file could not be copied because the destination directory %destination is not configured correctly.', array('%file' => $original_source, '%destination' => $dirname));
+      $logger->notice('File %file could not be copied because the destination directory %destination is not configured correctly.', array('%file' => $original_source, '%destination' => $dirname));
       drupal_set_message(t('The specified file %file could not be copied because the destination directory is not properly configured. This may be caused by a problem with file or directory permissions. More information is available in the system log.', array('%file' => $original_source)), 'error');
       return FALSE;
     }
@@ -670,7 +743,7 @@ function file_unmanaged_copy($source, $destination = NULL, $replace = FILE_EXIST
   $destination = file_destination($destination, $replace);
   if ($destination === FALSE) {
     drupal_set_message(t('The file %file could not be copied because a file by that name already exists in the destination directory.', array('%file' => $original_source)), 'error');
-    watchdog('file', 'File %file could not be copied because a file by that name already exists in the destination directory (%destination)', array('%file' => $original_source, '%destination' => $destination));
+    $logger->notice('File %file could not be copied because a file by that name already exists in the destination directory (%destination)', array('%file' => $original_source, '%destination' => $destination));
     return FALSE;
   }
 
@@ -679,7 +752,7 @@ function file_unmanaged_copy($source, $destination = NULL, $replace = FILE_EXIST
   $real_destination = drupal_realpath($destination);
   if ($source == $destination || ($real_source !== FALSE) && ($real_source == $real_destination)) {
     drupal_set_message(t('The specified file %file was not copied because it would overwrite itself.', array('%file' => $source)), 'error');
-    watchdog('file', 'File %file could not be copied because it would overwrite itself.', array('%file' => $source));
+    $logger->notice('File %file could not be copied because it would overwrite itself.', array('%file' => $source));
     return FALSE;
   }
   // Make sure the .htaccess files are present.
@@ -689,7 +762,7 @@ function file_unmanaged_copy($source, $destination = NULL, $replace = FILE_EXIST
     // If the copy failed and realpaths exist, retry the operation using them
     // instead.
     if ($real_source === FALSE || $real_destination === FALSE || !@copy($real_source, $real_destination)) {
-      watchdog('file', 'The specified file %file could not be copied to %destination.', array('%file' => $source, '%destination' => $destination), WATCHDOG_ERROR);
+      $logger->error('file', 'The specified file %file could not be copied to %destination.', array('%file' => $source, '%destination' => $destination));
       return FALSE;
     }
   }
@@ -813,7 +886,7 @@ function file_munge_filename($filename, $extensions, $alerts = TRUE) {
     // Remove any null bytes. See http://php.net/manual/en/security.filesystem.nullbytes.php
     $filename = str_replace(chr(0), '', $filename);
 
-    $whitelist = array_unique(explode(' ', trim($extensions)));
+    $whitelist = array_unique(explode(' ', strtolower(trim($extensions))));
 
     // Split the filename up by periods. The first part becomes the basename
     // the last part the final extension.
@@ -826,7 +899,7 @@ function file_munge_filename($filename, $extensions, $alerts = TRUE) {
     // of allowed extensions.
     foreach ($filename_parts as $filename_part) {
       $new_filename .= '.' . $filename_part;
-      if (!in_array($filename_part, $whitelist) && preg_match("/^[a-zA-Z]{2,5}\d?$/", $filename_part)) {
+      if (!in_array(strtolower($filename_part), $whitelist) && preg_match("/^[a-zA-Z]{2,5}\d?$/", $filename_part)) {
         $new_filename .= '_';
       }
     }
@@ -919,7 +992,7 @@ function file_create_filename($basename, $directory) {
  *   The file id.
  *
  * @see file_unmanaged_delete()
- * @see file_usage()->listUsage()
+ * @see \Drupal\file\FileUsage\FileUsageBase::delete()
  */
 function file_delete($fid) {
   return file_delete_multiple(array($fid));
@@ -936,7 +1009,7 @@ function file_delete($fid) {
  *   The file id.
  *
  * @see file_unmanaged_delete()
- * @see file_usage()->listUsage()
+ * @see \Drupal\file\FileUsage\FileUsageBase::delete()
  */
 function file_delete_multiple(array $fids) {
   entity_delete_multiple('file', $fids);
@@ -959,8 +1032,9 @@ function file_delete_multiple(array $fids) {
  * @see file_unmanaged_delete_recursive()
  */
 function file_unmanaged_delete($path) {
+  $logger = \Drupal::logger('file');
   if (is_dir($path)) {
-    watchdog('file', '%path is a directory and cannot be removed using file_unmanaged_delete().', array('%path' => $path), WATCHDOG_ERROR);
+    $logger->error('%path is a directory and cannot be removed using file_unmanaged_delete().', array('%path' => $path));
     return FALSE;
   }
   if (is_file($path)) {
@@ -969,12 +1043,12 @@ function file_unmanaged_delete($path) {
   // Return TRUE for non-existent file, but log that nothing was actually
   // deleted, as the current state is the intended result.
   if (!file_exists($path)) {
-    watchdog('file', 'The file %path was not deleted because it does not exist.', array('%path' => $path), WATCHDOG_NOTICE);
+    $logger->notice('The file %path was not deleted because it does not exist.', array('%path' => $path));
     return TRUE;
   }
   // We cannot handle anything other than files and directories. Log an error
   // for everything else (sockets, symbolic links, etc).
-  watchdog('file', 'The file %path is not of a recognized type so it was not deleted.', array('%path' => $path), WATCHDOG_ERROR);
+  $logger->error('The file %path is not of a recognized type so it was not deleted.', array('%path' => $path));
   return FALSE;
 }
 
@@ -1028,8 +1102,8 @@ function file_unmanaged_delete_recursive($path, $callback = NULL) {
 /**
  * Moves an uploaded file to a new location.
  *
- * PHP's move_uploaded_file() does not properly support streams if safe_mode
- * or open_basedir are enabled, so this function fills that gap.
+ * PHP's move_uploaded_file() does not properly support streams if open_basedir
+ * is enabled, so this function fills that gap.
  *
  * Compatibility: normal paths and stream wrappers.
  *
@@ -1047,9 +1121,9 @@ function file_unmanaged_delete_recursive($path, $callback = NULL) {
  */
 function drupal_move_uploaded_file($filename, $uri) {
   $result = @move_uploaded_file($filename, $uri);
-  // PHP's move_uploaded_file() does not properly support streams if safe_mode
-  // or open_basedir are enabled so if the move failed, try finding a real path
-  // and retry the move operation.
+  // PHP's move_uploaded_file() does not properly support streams if
+  // open_basedir is enabled so if the move failed, try finding a real path and
+  // retry the move operation.
   if (!$result) {
     if ($realpath = drupal_realpath($uri)) {
       $result = move_uploaded_file($filename, $realpath);
@@ -1103,18 +1177,22 @@ function file_unmanaged_save_data($data, $destination = NULL, $replace = FILE_EX
 /**
  * Finds all files that match a given mask in a given directory.
  *
- * Directories and files beginning with a period are excluded; this
- * prevents hidden files and directories (such as SVN working directories)
- * from being scanned.
+ * Directories and files beginning with a dot are excluded; this prevents
+ * hidden files and directories (such as SVN working directories) from being
+ * scanned. Use the umask option to skip configuration directories to
+ * eliminate the possibility of accidentally exposing configuration
+ * information. Also, you can use the base directory, recurse, and min_depth
+ * options to improve performance by limiting how much of the filesystem has
+ * to be traversed.
  *
  * @param $dir
  *   The base directory or URI to scan, without trailing slash.
  * @param $mask
- *   The preg_match() regular expression of the files to find.
+ *   The preg_match() regular expression for files to be included.
  * @param $options
  *   An associative array of additional options, with the following elements:
- *   - 'nomask': The preg_match() regular expression of the files to ignore.
- *     Defaults to '/(\.\.?|CVS)$/'.
+ *   - 'nomask': The preg_match() regular expression for files to be excluded.
+ *     There is no default.
  *   - 'callback': The callback function to call for each match. There is no
  *     default callback.
  *   - 'recurse': When TRUE, the directory scan will recurse the entire tree
@@ -1126,17 +1204,16 @@ function file_unmanaged_save_data($data, $destination = NULL, $replace = FILE_EX
  *   - 'min_depth': Minimum depth of directories to return files from. Defaults
  *     to 0.
  * @param $depth
- *   Current depth of recursion. This parameter is only used internally and
+ *   The current depth of recursion. This parameter is only used internally and
  *   should not be passed in.
  *
  * @return
  *   An associative array (keyed on the chosen key) of objects with 'uri',
- *   'filename', and 'name' members corresponding to the matching files.
+ *   'filename', and 'name' properties corresponding to the matched files.
  */
 function file_scan_directory($dir, $mask, $options = array(), $depth = 0) {
   // Merge in defaults.
   $options += array(
-    'nomask' => '/^CVS$/',
     'callback' => 0,
     'recurse' => TRUE,
     'key' => 'uri',
@@ -1156,7 +1233,7 @@ function file_scan_directory($dir, $mask, $options = array(), $depth = 0) {
     if ($handle = @opendir($dir)) {
       while (FALSE !== ($filename = readdir($handle))) {
         // Skip this file if it matches the nomask or starts with a dot.
-        if ($filename[0] != '.' && !preg_match($options['nomask'], $filename)) {
+        if ($filename[0] != '.' && !(isset($options['nomask']) && preg_match($options['nomask'], $filename))) {
           if ($depth == 0 && $dir_has_slash) {
             $uri = "$dir$filename";
           }
@@ -1187,7 +1264,7 @@ function file_scan_directory($dir, $mask, $options = array(), $depth = 0) {
       closedir($handle);
     }
     else {
-      watchdog('file', '@dir can not be opened', array('@dir' => $dir), WATCHDOG_ERROR);
+      \Drupal::logger('file')->error('@dir can not be opened', array('@dir' => $dir));
     }
   }
 
@@ -1206,11 +1283,11 @@ function file_upload_max_size() {
 
   if ($max_size < 0) {
     // Start with post_max_size.
-    $max_size = parse_size(ini_get('post_max_size'));
+    $max_size = Bytes::toInt(ini_get('post_max_size'));
 
     // If upload_max_size is less, then reduce. Except if upload_max_size is
     // zero, which indicates no limit.
-    $upload_max = parse_size(ini_get('upload_max_filesize'));
+    $upload_max = Bytes::toInt(ini_get('upload_max_filesize'));
     if ($upload_max > 0 && $upload_max < $max_size) {
       $max_size = $upload_max;
     }
@@ -1226,32 +1303,29 @@ function file_upload_max_size() {
  * @param $mapping
  *   An optional map of extensions to their mimetypes, in the form:
  *    - 'mimetypes': a list of mimetypes, keyed by an identifier,
- *    - 'extensions': the mapping itself, an associative array in which
- *      the key is the extension (lowercase) and the value is the mimetype
- *      identifier. If $mapping is NULL file_mimetype_mapping() is called.
+ *    - 'extensions': the mapping itself, an associative array in which the key
+ *      is the extension (lowercase) and the value is the mimetype identifier.
  *
  * @return
  *   The internet media type registered for the extension or
  *   application/octet-stream for unknown extensions.
  *
- * @see file_default_mimetype_mapping()
+ * @deprecated in Drupal 8.x-dev, will be removed before Drupal 8.0. Calls are
+ *   passed on to a new file.mime_type.guesser service, and the $mapping
+ *   parameter is ignored. Use
+ *   \Drupal::service('file.mime_type.guesser')->guess($uri).
+ *
+ * @see \Drupal\Core\File\MimeType\ExtensionMimeTypeGuesser::guess()
  */
 function file_get_mimetype($uri, $mapping = NULL) {
-  if ($wrapper = file_stream_wrapper_get_instance_by_uri($uri)) {
-    return $wrapper->getMimeType($uri, $mapping);
-  }
-  else {
-    // getMimeType() is not implementation specific, so we can directly
-    // call it without an instance.
-    return LocalStream::getMimeType($uri, $mapping);
-  }
+  return \Drupal::service('file.mime_type.guesser')->guess($uri);
 }
 
 /**
  * Sets the permissions on a file or directory.
  *
- * This function will use the system.file:chmod.directory and
- * system.file:chmod.file configuration for the default modes for directories
+ * This function will use the file_chmod_directory and
+ * file_chmod_file settings for the default modes for directories
  * and uploaded/generated files. By default these will give everyone read access
  * so that users accessing the files with a user account without the webserver
  * group (e.g. via FTP) can read these files, and give group write permissions
@@ -1264,8 +1338,8 @@ function file_get_mimetype($uri, $mapping = NULL) {
  *
  * @param $uri
  *   A string containing a URI file, or directory path.
- * @param int $mode
- *   Octal value for the permissions. Consult PHP chmod() documentation for
+ * @param $mode
+ *   Integer value for the permissions. Consult PHP chmod() documentation for
  *   more information.
  *
  * @return bool
@@ -1275,38 +1349,19 @@ function file_get_mimetype($uri, $mapping = NULL) {
  */
 function drupal_chmod($uri, $mode = NULL) {
   if (!isset($mode)) {
-    // Configuration system stores default modes as strings. We use octdec() so
-    // that the octal permission numbers can be expressed as integers or strings
-    // and will be converted correctly in both cases.
     if (is_dir($uri)) {
-      $mode = octdec(\Drupal::config('system.file')->get('chmod.directory'));
-      if (!$mode) {
-        $mode = 0775;
-      }
+      $mode = Settings::get('file_chmod_directory', FILE_CHMOD_DIRECTORY);
     }
     else {
-      $mode = octdec(\Drupal::config('system.file')->get('chmod.file'));
-      if (!$mode) {
-        $mode = 0664;
-      }
+      $mode = Settings::get('file_chmod_file', FILE_CHMOD_FILE);
     }
   }
 
-  // If this URI is a stream, pass it off to the appropriate stream wrapper.
-  // Otherwise, attempt PHP's chmod. This allows use of drupal_chmod even
-  // for unmanaged files outside of the stream wrapper interface.
-  if ($wrapper = file_stream_wrapper_get_instance_by_uri($uri)) {
-    if ($wrapper->chmod($mode)) {
-      return TRUE;
-    }
-  }
-  else {
-    if (@chmod($uri, $mode)) {
-      return TRUE;
-    }
+  if (@chmod($uri, $mode)) {
+    return TRUE;
   }
 
-  watchdog('file', 'The file permissions could not be set on %uri.', array('%uri' => $uri), WATCHDOG_ERROR);
+  \Drupal::logger('file')->error('The file permissions could not be set on %uri.', array('%uri' => $uri));
   return FALSE;
 }
 
@@ -1456,18 +1511,13 @@ function drupal_basename($uri, $suffix = NULL) {
  * @see mkdir()
  * @see http://drupal.org/node/515192
  * @ingroup php_wrappers
+ *
+ * @todo Update with open_basedir compatible recursion logic from
+ *   \Drupal\Component\PhpStorage\FileStorage::ensureDirectory().
  */
 function drupal_mkdir($uri, $mode = NULL, $recursive = FALSE, $context = NULL) {
   if (!isset($mode)) {
-    // Configuration system stores default mode as strings.
-    $mode = FALSE;
-    // During early update there's no container.
-    if (is_object(\Drupal::getContainer())) {
-      $mode = octdec(\Drupal::config('system.file')->get('chmod.directory'));
-    }
-    if (!$mode) {
-      $mode = 0775;
-    }
+    $mode = Settings::get('file_chmod_directory', FILE_CHMOD_DIRECTORY);
   }
 
   // If the URI has a scheme, don't override the umask - schemes can handle this

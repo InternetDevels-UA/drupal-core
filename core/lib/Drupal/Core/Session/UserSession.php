@@ -80,7 +80,7 @@ class UserSession implements AccountInterface {
   protected $preferred_admin_langcode;
 
   /**
-   * The e-mail address of this account.
+   * The email address of this account.
    *
    * @var string
    */
@@ -94,10 +94,17 @@ class UserSession implements AccountInterface {
   protected $timezone;
 
   /**
+   * The hostname for this user session.
+   *
+   * @var string
+   */
+  protected $hostname = '';
+
+  /**
    * Constructs a new user session.
    *
    * @param array $values
-   *   Array of initial values for the user sesion.
+   *   Array of initial values for the user session.
    */
   public function __construct(array $values = array()) {
     foreach ($values as $key => $value) {
@@ -115,8 +122,14 @@ class UserSession implements AccountInterface {
   /**
    * {@inheritdoc}
    */
-  public function getRoles() {
-    return $this->roles;
+  public function getRoles($exclude_locked_roles = FALSE) {
+    $roles = $this->roles;
+
+    if ($exclude_locked_roles) {
+      $roles = array_diff($roles, array(DRUPAL_ANONYMOUS_RID, DRUPAL_AUTHENTICATED_RID));
+    }
+
+    return $roles;
   }
 
   /**
@@ -128,15 +141,7 @@ class UserSession implements AccountInterface {
       return TRUE;
     }
 
-    $roles = \Drupal::entityManager()->getStorageController('user_role')->loadMultiple($this->getRoles());
-
-    foreach ($roles as $role) {
-      if ($role->hasPermission($permission)) {
-        return TRUE;
-      }
-    }
-
-    return FALSE;
+    return $this->getRoleStorage()->isPermissionInRoles($permission, $this->getRoles());
   }
 
   /**
@@ -177,26 +182,26 @@ class UserSession implements AccountInterface {
   /**
    * {@inheritdoc}
    */
-  function getPreferredLangcode($default = NULL) {
+  function getPreferredLangcode($fallback_to_default = TRUE) {
     $language_list = language_list();
     if (!empty($this->preferred_langcode) && isset($language_list[$this->preferred_langcode])) {
       return $language_list[$this->preferred_langcode]->id;
     }
     else {
-      return $default ? $default : language_default()->id;
+      return $fallback_to_default ? language_default()->id : '';
     }
   }
 
   /**
    * {@inheritdoc}
    */
-  function getPreferredAdminLangcode($default = NULL) {
+  function getPreferredAdminLangcode($fallback_to_default = TRUE) {
     $language_list = language_list();
     if (!empty($this->preferred_admin_langcode) && isset($language_list[$this->preferred_admin_langcode])) {
       return $language_list[$this->preferred_admin_langcode]->id;
     }
     else {
-      return $default ? $default : language_default()->id;
+      return $fallback_to_default ? language_default()->id : '';
     }
   }
 
@@ -228,6 +233,23 @@ class UserSession implements AccountInterface {
    */
   public function getLastAccessedTime() {
     return $this->timestamp;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getHostname() {
+    return $this->hostname;
+  }
+
+  /**
+   * Returns the role storage object.
+   *
+   * @return \Drupal\user\RoleStorageInterface
+   *   The role storage object.
+   */
+  protected function getRoleStorage() {
+    return \Drupal::entityManager()->getStorage('user_role');
   }
 
 }

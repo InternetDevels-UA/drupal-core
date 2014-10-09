@@ -25,6 +25,8 @@ namespace Drupal\Core\Database;
  * @code
  * class Drupal\Core\Database\Driver\oracle\Statement implements Iterator, Drupal\Core\Database\StatementInterface {}
  * @endcode
+ *
+ * @ingroup database
  */
 interface StatementInterface extends \Traversable {
 
@@ -74,7 +76,10 @@ interface StatementInterface extends \Traversable {
    *
    * @return
    *   The number of rows affected by the last DELETE, INSERT, or UPDATE
-   *   statement executed.
+   *   statement executed or throws \Drupal\Core\Database\RowCountException
+   *   if the last executed statement was SELECT.
+   *
+   * @throws \Drupal\Core\Database\RowCountException
    */
   public function rowCount();
 

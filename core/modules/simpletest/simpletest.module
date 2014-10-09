@@ -1,7 +1,12 @@
 <?php
 
 use Drupal\Core\Database\Database;
+use Drupal\Core\Page\HtmlPage;
+use Drupal\Core\Extension\ExtensionDiscovery;
+use Drupal\Core\Render\Element;
+use Drupal\Core\Routing\RouteMatchInterface;
 use Drupal\simpletest\TestBase;
+use Drupal\simpletest\TestDiscovery;
 use Symfony\Component\Process\PhpExecutableFinder;
 
 /**
@@ -12,61 +17,24 @@ use Symfony\Component\Process\PhpExecutableFinder;
 /**
  * Implements hook_help().
  */
-function simpletest_help($path, $arg) {
-  switch ($path) {
-    case 'admin/help#simpletest':
+function simpletest_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    case 'help.page.simpletest':
       $output = '';
       $output .= '<h3>' . t('About') . '</h3>';
-      $output .= '<p>' . t('The Testing module provides a framework for running automated unit tests. It can be used to verify a working state of Drupal before and after any code changes, or as a means for developers to write and execute tests for their modules. For more information, see the online handbook entry for <a href="@simpletest">Testing module</a>.', array('@simpletest' => 'http://drupal.org/documentation/modules/simpletest', '@blocks' => url('admin/structure/block'))) . '</p>';
+      $output .= '<p>' . t('The Testing module provides a framework for running automated tests. It can be used to verify a working state of Drupal before and after any code changes, or as a means for developers to write and execute tests for their modules. For more information, see <a href="!simpletest">the online documentation for the Testing module</a>.', array('!simpletest' => 'https://drupal.org/documentation/modules/simpletest')) . '</p>';
       $output .= '<h3>' . t('Uses') . '</h3>';
       $output .= '<dl>';
       $output .= '<dt>' . t('Running tests') . '</dt>';
-      $output .= '<dd>' . t('Visit the <a href="@admin-simpletest">Testing page</a> to display a list of available tests. For comprehensive testing, select <em>all</em> tests, or individually select tests for more targeted testing. Note that it might take several minutes for all tests to complete. For more information on creating and modifying your own tests, see the <a href="@simpletest-api">Testing API Documentation</a> in the Drupal handbook.', array('@simpletest-api' => 'http://drupal.org/simpletest', '@admin-simpletest' => url('admin/config/development/testing'))) . '</dd>';
-      $output .= '<dd>' . t('After the tests run, a message will be displayed next to each test group indicating whether tests within it passed, failed, or had exceptions. A pass means that the test returned the expected results, while fail means that it did not. An exception normally indicates an error outside of the test, such as a PHP warning or notice. If there were failures or exceptions, the results will be expanded to show details, and the tests that had failures or exceptions will be indicated in red or pink rows. You can then use these results to refine your code and tests, until all tests pass.') . '</dd>';
+      $output .= '<dd><p>' . t('Visit the <a href="!admin-simpletest">Testing page</a> to display a list of available tests. For comprehensive testing, select <em>all</em> tests, or individually select tests for more targeted testing. Note that it might take several minutes for all tests to complete.', array('!admin-simpletest' => \Drupal::url('simpletest.test_form'))) . '</p>';
+      $output .= '<p>' . t('After the tests run, a message will be displayed next to each test group indicating whether tests within it passed, failed, or had exceptions. A pass means that the test returned the expected results, while fail means that it did not. An exception normally indicates an error outside of the test, such as a PHP warning or notice. If there were failures or exceptions, the results will be expanded to show details, and the tests that had failures or exceptions will be indicated in red or pink rows. You can then use these results to refine your code and tests, until all tests pass.') . '</p></dd>';
       $output .= '</dl>';
       return $output;
+
+    case 'simpletest.test_form':
+      $output = t('Select the test(s) or test group(s) you would like to run, and click <em>Run tests</em>.');
+      return $output;
   }
-}
-
-/**
- * Implements hook_menu().
- */
-function simpletest_menu() {
-  $items['admin/config/development/testing'] = array(
-    'title' => 'Testing',
-    'description' => 'Run tests against Drupal core and your modules. These tests help assure that your site code is working as designed.',
-    'route_name' => 'simpletest.test_form',
-    'weight' => -5,
-  );
-  $items['admin/config/development/testing/list'] = array(
-    'title' => 'List',
-    'type' => MENU_DEFAULT_LOCAL_TASK,
-  );
-  $items['admin/config/development/testing/settings'] = array(
-    'title' => 'Settings',
-    'route_name' => 'simpletest.settings',
-    'access arguments' => array('administer unit tests'),
-    'type' => MENU_LOCAL_TASK,
-    'weight' => 100,
-  );
-  $items['admin/config/development/testing/results/%'] = array(
-    'title' => 'Test result',
-    'description' => 'View result of tests.',
-    'route_name' => 'simpletest.result_form',
-  );
-  return $items;
-}
-
-/**
- * Implements hook_permission().
- */
-function simpletest_permission() {
-  return array(
-    'administer unit tests' => array(
-      'title' => t('Administer tests'),
-      'restrict access' => TRUE,
-    ),
-  );
 }
 
 /**
@@ -74,13 +42,9 @@ function simpletest_permission() {
  */
 function simpletest_theme() {
   return array(
-    'simpletest_test_table' => array(
-      'render element' => 'table',
-      'file' => 'simpletest.theme.inc',
-    ),
     'simpletest_result_summary' => array(
-      'render element' => 'form',
-      'file' => 'simpletest.theme.inc',
+      'variables' => array('label' => NULL, 'items' => array(), 'pass' => 0, 'fail' => 0, 'exception' => 0, 'debug' => 0),
+      'template' => 'simpletest-result-summary',
     ),
   );
 }
@@ -97,55 +61,91 @@ function simpletest_js_alter(&$javascript) {
   }
 }
 
-function _simpletest_format_summary_line($summary) {
-  $args = array(
-    '@pass' => format_plural(isset($summary['#pass']) ? $summary['#pass'] : 0, '1 pass', '@count passes'),
-    '@fail' => format_plural(isset($summary['#fail']) ? $summary['#fail'] : 0, '1 fail', '@count fails'),
-    '@exception' => format_plural(isset($summary['#exception']) ? $summary['#exception'] : 0, '1 exception', '@count exceptions'),
-  );
-  if (!$summary['#debug']) {
-    return t('@pass, @fail, and @exception', $args);
-  }
-  $args['@debug'] = format_plural(isset($summary['#debug']) ? $summary['#debug'] : 0, '1 debug message', '@count debug messages');
-  return t('@pass, @fail, @exception, and @debug', $args);
+/**
+ * Prepares variables for simpletest result summary templates.
+ *
+ * Default template: simpletest-result-summary.html.twig.
+ *
+ * @param array $variables
+ *   An associative array containing:
+ *   - label: An optional label to be rendered before the results.
+ *   - ok: The overall group result pass or fail.
+ *   - pass: The number of passes.
+ *   - fail: The number of fails.
+ *   - exception: The number of exceptions.
+ *   - debug: The number of debug messages.
+ */
+function template_preprocess_simpletest_result_summary(&$variables) {
+  $variables['items'] = _simpletest_build_summary_line($variables);
 }
 
 /**
- * Actually runs tests.
+ * Formats each test result type pluralized summary.
+ *
+ * @param array $summary
+ *   A summary of the test results.
+ *
+ * @return array
+ *   The pluralized test summary items.
+ */
+function _simpletest_build_summary_line($summary) {
+  $translation = \Drupal::translation();
+  $items['pass'] = $translation->formatPlural($summary['pass'], '1 pass', '@count passes');
+  $items['fail'] = $translation->formatPlural($summary['fail'], '1 fail', '@count fails');
+  $items['exception'] = $translation->formatPlural($summary['exception'], '1 exception', '@count exceptions');
+  if ($summary['debug']) {
+    $items['debug'] = $translation->formatPlural($summary['debug'], '1 debug message', '@count debug messages');
+  }
+  return $items;
+}
+
+/**
+ * Formats test result summaries into a comma separated string for run-tests.sh.
+ *
+ * @param array $summary
+ *   A summary of the test results.
+ *
+ * @return string
+ *   A concatenated string of the formatted test results.
+ */
+function _simpletest_format_summary_line($summary) {
+  $parts = _simpletest_build_summary_line($summary);
+  return implode(', ', $parts);
+}
+
+/**
+ * Runs tests.
  *
  * @param $test_list
  *   List of tests to run.
- * @param $reporter
- *   Which reporter to use. Allowed values are: text, xml, html and drupal,
- *   drupal being the default.
+ *
+ * @return string
+ *   The test ID.
  */
-function simpletest_run_tests($test_list, $reporter = 'drupal') {
+function simpletest_run_tests($test_list) {
   $test_id = db_insert('simpletest_test_id')
     ->useDefaults(array('test_id'))
     ->execute();
 
-  $phpunit_tests = isset($test_list['UnitTest']) ? $test_list['UnitTest'] : array();
-  if ($phpunit_tests) {
-    $phpunit_results = simpletest_run_phpunit_tests($test_id, $phpunit_tests);
+  if (!empty($test_list['phpunit'])) {
+    $phpunit_results = simpletest_run_phpunit_tests($test_id, $test_list['phpunit']);
     simpletest_process_phpunit_results($phpunit_results);
   }
 
-  if (!array_key_exists('WebTest', $test_list) || empty($test_list['WebTest'])) {
-    // Early return if there are no WebTests to run.
+  // Early return if there are no further tests to run.
+  if (empty($test_list['simpletest'])) {
     return $test_id;
   }
 
-  // Contine with SimpleTests only.
-  $test_list = $test_list['WebTest'];
+  // Continue with SimpleTests only.
+  $test_list = $test_list['simpletest'];
 
   // Clear out the previous verbose files.
   file_unmanaged_delete_recursive('public://simpletest/verbose');
 
   // Get the info for the first test being run.
-  $first_test = array_shift($test_list);
-  $first_instance = new $first_test();
-  array_unshift($test_list, $first_test);
-  $info = $first_instance->getInfo();
+  $first_test = reset($test_list);
+  $info = TestDiscovery::getTestInfo(new \ReflectionClass($first_test));
 
   $batch = array(
     'title' => t('Running tests'),
@@ -165,17 +165,17 @@ function simpletest_run_tests($test_list, $reporter = 'drupal') {
 }
 
 /**
- * Executes phpunit tests and returns the results of the run.
+ * Executes PHPUnit tests and returns the results of the run.
  *
  * @param $test_id
  *   The current test ID.
  * @param $unescaped_test_classnames
  *   An array of test class names, including full namespaces, to be passed as
- *   a regular expression to phpunit's --filter option.
+ *   a regular expression to PHPUnit's --filter option.
  *
  * @return array
- *   The parsed results of phpunit's junit xml output, in the format of the
- *   simpletest table's schema.
+ *   The parsed results of PHPUnit's JUnit XML output, in the format of
+ *   {simpletest}'s schema.
  */
 function simpletest_run_phpunit_tests($test_id, array $unescaped_test_classnames) {
   $phpunit_file = simpletest_phpunit_xml_filepath($test_id);
@@ -184,16 +184,18 @@ function simpletest_run_phpunit_tests($test_id, array $unescaped_test_classnames
 }
 
 /**
- * Inserts the parsed phpunit results into the simpletest table.
+ * Inserts the parsed PHPUnit results into {simpletest}.
  *
- * @param array $phpunit_results
- *   An array of test results returned from simpletest_phpunit_xml_to_rows.
+ * @param array[] $phpunit_results
+ *   An array of test results returned from simpletest_phpunit_xml_to_rows().
  */
 function simpletest_process_phpunit_results($phpunit_results) {
-  // Insert the results of the phpunit test run into the db so the results are
-  // displayed along with simpletest's results.
+  // Insert the results of the PHPUnit test run into the database so the results
+  // are displayed along with Simpletest's results.
   if (!empty($phpunit_results)) {
-    $query = db_insert('simpletest')->fields(array_keys($phpunit_results[0]));
+    $query = TestBase::getDatabaseConnection()
+      ->insert('simpletest')
+      ->fields(array_keys($phpunit_results[0]));
     foreach ($phpunit_results as $result) {
       $query->values($result);
     }
@@ -202,12 +204,13 @@ function simpletest_process_phpunit_results($phpunit_results) {
 }
 
 /**
- * Returns the path to use for phpunit's --log-junit option.
+ * Returns the path to use for PHPUnit's --log-junit option.
  *
  * @param $test_id
  *   The current test ID.
+ *
  * @return string
- *   Path to the phpunit xml file to use for the current test_id.
+ *   Path to the PHPUnit XML file to use for the current $test_id.
  */
 function simpletest_phpunit_xml_filepath($test_id) {
   return drupal_realpath('public://simpletest') . '/phpunit-' . $test_id . '.xml';
@@ -217,38 +220,50 @@ function simpletest_phpunit_xml_filepath($test_id) {
  * Returns the path to core's phpunit.xml.dist configuration file.
  *
  * @return string
- *   Path to core's phpunit.xml.dist configuration file.
+ *   The path to core's phpunit.xml.dist configuration file.
  */
 function simpletest_phpunit_configuration_filepath() {
   return DRUPAL_ROOT . '/core/phpunit.xml.dist';
 }
 
 /**
- * Executes the phpunit command.
+ * Executes the PHPUnit command.
  *
  * @param array $unescaped_test_classnames
  *   An array of test class names, including full namespaces, to be passed as
- *   a regular expression to phpunit's --filter option.
+ *   a regular expression to PHPUnit's --filter option.
  * @param string $phpunit_file
- *   A filepath to use for phpunit's --log-junit option.
+ *   A filepath to use for PHPUnit's --log-junit option.
+ *
+ * @return string
+ *  The results as returned by exec().
  */
 function simpletest_phpunit_run_command(array $unescaped_test_classnames, $phpunit_file) {
   $phpunit_bin = simpletest_phpunit_command();
 
-  // Double escape namespaces so they'll work in a regexp.
-  $escaped_test_classnames = array_map(function($class) {
-    return addslashes($class);
-  }, $unescaped_test_classnames);
-
-  $filter_string = implode("|", $escaped_test_classnames);
-
   $command = array(
     $phpunit_bin,
-    '--filter',
-    escapeshellarg($filter_string),
     '--log-junit',
     escapeshellarg($phpunit_file),
   );
+
+  // Optimized for running a single test.
+  if (count($unescaped_test_classnames) == 1) {
+    $class = new \ReflectionClass($unescaped_test_classnames[0]);
+    $command[] = escapeshellarg($class->getFileName());
+  }
+  else {
+    // Double escape namespaces so they'll work in a regexp.
+    $escaped_test_classnames = array_map(function($class) {
+      return addslashes($class);
+    }, $unescaped_test_classnames);
+
+    $filter_string = implode("|", $escaped_test_classnames);
+    $command = array_merge($command, array(
+      '--filter',
+      escapeshellarg($filter_string),
+    ));
+  }
 
   // Need to change directories before running the command so that we can use
   // relative paths in the configuration file's exclusions.
@@ -264,6 +279,9 @@ function simpletest_phpunit_run_command(array $unescaped_test_classnames, $phpun
 
 /**
  * Returns the command to run PHPUnit.
+ *
+ * @return string
+ *   The command that can be run through exec().
  */
 function simpletest_phpunit_command() {
   // Don't use the committed version in composer's bin dir if running on
@@ -303,7 +321,7 @@ function _simpletest_batch_operation($test_list_init, $test_id, &$context) {
   $test = new $test_class($test_id);
   $test->run();
   $size = count($test_list);
-  $info = $test->getInfo();
+  $info = TestDiscovery::getTestInfo(new \ReflectionClass($test));
 
   \Drupal::moduleHandler()->invokeAll('test_finished', array($test->results));
 
@@ -314,11 +332,20 @@ function _simpletest_batch_operation($test_list_init, $test_id, &$context) {
   }
   $test_results[$test_class]['#name'] = $info['name'];
   $items = array();
-  foreach (element_children($test_results) as $class) {
-    array_unshift($items, '<div class="simpletest-' . ($test_results[$class]['#fail'] + $test_results[$class]['#exception'] ? 'fail' : 'pass') . '">' . t('@name: @summary', array('@name' => $test_results[$class]['#name'], '@summary' => _simpletest_format_summary_line($test_results[$class]))) . '</div>');
+  foreach (Element::children($test_results) as $class) {
+    $class_test_result = $test_results[$class] + array(
+      '#theme' => 'simpletest_result_summary',
+      '#label' => t($test_results[$class]['#name'] . ':'),
+    );
+    array_unshift($items, drupal_render($class_test_result));
   }
   $context['message'] = t('Processed test @num of @max - %test.', array('%test' => $info['name'], '@num' => $max - $size, '@max' => $max));
-  $context['message'] .= '<div class="simpletest-' . ($test_results['#fail'] + $test_results['#exception'] ? 'fail' : 'pass') . '">Overall results: ' . _simpletest_format_summary_line($test_results) . '</div>';
+  $overall_results = $test_results + array(
+    '#theme' => 'simpletest_result_summary',
+    '#label' => t('Overall results:'),
+  );
+  $context['message'] .= drupal_render($overall_results);
+
   $item_list = array(
     '#theme' => 'item_list',
     '#items' => $items,
@@ -360,36 +387,42 @@ function _simpletest_batch_finished($success, $results, $operations, $elapsed) {
  *
  * @param $test_id
  *   The test ID to get the last test from.
- * @return
+ * @return array
  *   Array containing the last database prefix used and the last test class
  *   that ran.
  */
 function simpletest_last_test_get($test_id) {
-  $last_prefix = db_query_range('SELECT last_prefix FROM {simpletest_test_id} WHERE test_id = :test_id', 0, 1, array(':test_id' => $test_id))->fetchField();
-  $last_test_class = db_query_range('SELECT test_class FROM {simpletest} WHERE test_id = :test_id ORDER BY message_id DESC', 0, 1, array(':test_id' => $test_id))->fetchField();
+  $last_prefix = TestBase::getDatabaseConnection()
+    ->queryRange('SELECT last_prefix FROM {simpletest_test_id} WHERE test_id = :test_id', 0, 1, array(
+      ':test_id' => $test_id,
+    ))
+    ->fetchField();
+  $last_test_class = TestBase::getDatabaseConnection()
+    ->queryRange('SELECT test_class FROM {simpletest} WHERE test_id = :test_id ORDER BY message_id DESC', 0, 1, array(
+      ':test_id' => $test_id,
+    ))
+    ->fetchField();
   return array($last_prefix, $last_test_class);
 }
 
 /**
- * Read the error log and report any errors as assertion failures.
+ * Reads the error log and reports any errors as assertion failures.
  *
  * The errors in the log should only be fatal errors since any other errors
  * will have been recorded by the error handler.
  *
  * @param $test_id
  *   The test ID to which the log relates.
- * @param $prefix
+ * @param $database_prefix
  *   The database prefix to which the log relates.
  * @param $test_class
  *   The test class to which the log relates.
- * @param $during_test
- *   Indicates that the current file directory path is a temporary file
- *   file directory used during testing.
- * @return
- *   Found any entries in log.
+ *
+ * @return bool
+ *   Whether any fatal errors were found.
  */
-function simpletest_log_read($test_id, $prefix, $test_class, $during_test = FALSE) {
-  $log = 'public://' . ($during_test ? '' : '/simpletest/' . substr($prefix, 10)) . '/error.log';
+function simpletest_log_read($test_id, $database_prefix, $test_class) {
+  $log = DRUPAL_ROOT . '/sites/simpletest/' . substr($database_prefix, 10) . '/error.log';
   $found = FALSE;
   if (file_exists($log)) {
     foreach (file($log) as $line) {
@@ -413,17 +446,19 @@ function simpletest_log_read($test_id, $prefix, $test_class, $during_test = FALS
 }
 
 /**
- * Get a list of all of the tests provided by the system.
+ * Gets a list of all of the tests provided by the system.
  *
  * The list of test classes is loaded by searching the designated directory for
  * each module for files matching the PSR-0 standard. Once loaded the test list
  * is cached and stored in a static variable.
  *
- * @return
- *   An array of tests keyed with the groups specified in each of the tests
- *   getInfo() method and then keyed by the test class. An example of the array
- *   structure is provided below.
+ * @param string $module
+ *   Name of a module. If set then only tests belonging to this module are
+ *   returned.
  *
+ * @return array[]
+ *   An array of tests keyed with the groups, and then keyed by test classes.
+ *   For example:
  *   @code
  *     $groups['Block'] => array(
  *       'BlockTestCase' => array(
@@ -434,126 +469,31 @@ function simpletest_log_read($test_id, $prefix, $test_class, $during_test = FALS
  *     );
  *   @endcode
  */
-function simpletest_test_get_all() {
-  $groups = &drupal_static(__FUNCTION__);
-
-  if (!$groups) {
-    // Make sure that namespaces for disabled modules are registered so that the
-    // checks below will find them.
-    simpletest_classloader_register();
-
-    // Load test information from cache if available, otherwise retrieve the
-    // information from each tests getInfo() method.
-    if ($cache = cache()->get('simpletest')) {
-      $groups = $cache->data;
-    }
-    else {
-      // Select all PSR-0 classes in the Tests namespace of all modules.
-      $classes = array();
-      $module_data = system_rebuild_module_data();
-      $all_data = $module_data + system_rebuild_theme_data();
-      $all_data += drupal_system_listing('/\.profile$/', 'profiles', 'name');
-      foreach ($all_data as $name => $data) {
-        // Build directory in which the test files would reside.
-        $tests_dir = DRUPAL_ROOT . '/' . dirname($data->uri) . '/lib/Drupal/' . $name . '/Tests';
-        // Scan it for test files if it exists.
-        if (is_dir($tests_dir)) {
-          $files = file_scan_directory($tests_dir, '/.*\.php/');
-          if (!empty($files)) {
-            $basedir = DRUPAL_ROOT . '/' . dirname($data->uri) . '/lib/';
-            foreach ($files as $file) {
-              // Convert the file name into the namespaced class name.
-              $replacements = array(
-                '/' => '\\',
-                $basedir => '',
-                '.php' => '',
-              );
-              $classes[] = strtr($file->uri, $replacements);
-            }
-          }
-        }
-      }
-
-      // Check that each class has a getInfo() method and store the information
-      // in an array keyed with the group specified in the test information.
-      $groups = array();
-      foreach ($classes as $class) {
-        // Test classes need to implement getInfo() to be valid.
-        if (class_exists($class) && method_exists($class, 'getInfo')) {
-          $reflectionClass = new ReflectionClass($class);
-          // Skip abstract classes and interfaces.
-          if ($reflectionClass->isInstantiable()) {
-            $reflectionMethod = new ReflectionMethod($class, 'getInfo');
-            $declaringClass = $reflectionMethod->getDeclaringClass()->getName();
-            // Avoid testing intermediate classes which do not implement the
-            // method.
-            if ($class == $declaringClass) {
-              $info = call_user_func(array($class, 'getInfo'));
-            }
-            else {
-              continue;
-            }
-          }
-          else {
-            continue;
-          }
-          // If this test class requires a non-existing module, skip it.
-          if (!empty($info['dependencies'])) {
-            foreach ($info['dependencies'] as $module) {
-              if (!isset($module_data[$module])) {
-                continue 2;
-              }
-            }
-          }
-
-          $groups[$info['group']][$class] = $info;
-        }
-      }
-
-      // Sort the groups and tests within the groups by name.
-      uksort($groups, 'strnatcasecmp');
-      foreach ($groups as $group => &$tests) {
-        uksort($tests, 'strnatcasecmp');
-      }
-
-      // Allow modules extending core tests to disable originals.
-      drupal_alter('simpletest', $groups);
-      cache()->set('simpletest', $groups);
-    }
-  }
-  return $groups;
+function simpletest_test_get_all($module = NULL) {
+  return \Drupal::service('test_discovery')->getTestClasses($module);
 }
 
 /**
  * Registers namespaces for disabled modules.
  */
 function simpletest_classloader_register() {
-  // @see drupal_get_filename()
-  $types = array(
-    'theme_engine' => array('dir' => 'themes/engines', 'extension' => 'engine'),
-    'module' => array('dir' => 'modules', 'extension' => 'module'),
-    'theme' => array('dir' => 'themes', 'extension' => 'info'),
-    'profile' => array('dir' => 'profiles', 'extension' => 'profile'),
-  );
-
-  $classloader = drupal_classloader();
-
-  foreach ($types as $type => $info) {
-    $matches = drupal_system_listing('/^' . DRUPAL_PHP_FUNCTION_PATTERN . '\.' . $info['extension'] . '$/', $info['dir']);
-    foreach ($matches as $name => $file) {
-      drupal_classloader_register($name, dirname($file->uri));
-      $classloader->add('Drupal\\' . $name . '\\Tests', DRUPAL_ROOT . '/' . dirname($file->uri) . '/tests');
-      // While being there, prime drupal_get_filename().
-      drupal_get_filename($type, $name, $file->uri);
-    }
-  }
-
-  // Register the core test directory so we can find \Drupal\UnitTestCase.
-  $classloader->add('Drupal\\Tests', DRUPAL_ROOT . '/core/tests');
+  \Drupal::service('test_discovery')->registerTestNamespaces();
 }
 
 /**
- * Generate test file.
+ * Generates test file.
+ *
+ * @param string $filename
+ *   The name of the file, including the path.
+ * @param int $width
+ *   The number of characters on one line.
+ * @param int $lines
+ *   The number of lines in the file.
+ * @param string $type
+ *   (optional) The type, for example: "text", "binary", or "binary-text".
+ *
+ * @return string
+ *   The name of the file, including the path.
  */
 function simpletest_generate_file($filename, $width, $lines, $type = 'binary-text') {
   $size = $width * $lines - $lines;
@@ -583,7 +523,7 @@ function simpletest_generate_file($filename, $width, $lines, $type = 'binary-tex
 }
 
 /**
- * Remove all temporary database tables and directories.
+ * Removes all temporary database tables and directories.
  */
 function simpletest_clean_environment() {
   simpletest_clean_database();
@@ -597,12 +537,12 @@ function simpletest_clean_environment() {
   }
 
   // Detect test classes that have been added, renamed or deleted.
-  cache()->delete('simpletest');
-  cache()->delete('simpletest_phpunit');
+  \Drupal::cache()->delete('simpletest');
+  \Drupal::cache()->delete('simpletest_phpunit');
 }
 
 /**
- * Remove prefixed tables from the database from crashed tests.
+ * Removes prefixed tables from the database from crashed tests.
  */
 function simpletest_clean_database() {
   $tables = db_find_tables(Database::getConnection()->prefixTables('{simpletest}') . '%');
@@ -626,15 +566,15 @@ function simpletest_clean_database() {
 }
 
 /**
- * Find all leftover temporary directories and remove them.
+ * Finds all leftover temporary directories and removes them.
  */
 function simpletest_clean_temporary_directories() {
   $count = 0;
-  if (is_dir('public://simpletest')) {
-    $files = scandir('public://simpletest');
+  if (is_dir(DRUPAL_ROOT . '/sites/simpletest')) {
+    $files = scandir(DRUPAL_ROOT . '/sites/simpletest');
     foreach ($files as $file) {
-      $path = 'public://simpletest/' . $file;
-      if (is_dir($path) && (is_numeric($file) || strpos($file, 'config_simpletest') !== FALSE)) {
+      if ($file[0] != '.') {
+        $path = DRUPAL_ROOT . '/sites/simpletest/' . $file;
         file_unmanaged_delete_recursive($path, array('Drupal\simpletest\TestBase', 'filePreDeleteCallback'));
         $count++;
       }
@@ -650,31 +590,33 @@ function simpletest_clean_temporary_directories() {
 }
 
 /**
- * Clear the test result tables.
+ * Clears the test result tables.
  *
  * @param $test_id
  *   Test ID to remove results for, or NULL to remove all results.
- * @return
- *   The number of results removed.
+ *
+ * @return int
+ *   The number of results that were removed.
  */
 function simpletest_clean_results_table($test_id = NULL) {
   if (\Drupal::config('simpletest.settings')->get('clear_results')) {
+    $connection = TestBase::getDatabaseConnection();
     if ($test_id) {
-      $count = db_query('SELECT COUNT(test_id) FROM {simpletest_test_id} WHERE test_id = :test_id', array(':test_id' => $test_id))->fetchField();
+      $count = $connection->query('SELECT COUNT(test_id) FROM {simpletest_test_id} WHERE test_id = :test_id', array(':test_id' => $test_id))->fetchField();
 
-      db_delete('simpletest')
+      $connection->delete('simpletest')
         ->condition('test_id', $test_id)
         ->execute();
-      db_delete('simpletest_test_id')
+      $connection->delete('simpletest_test_id')
         ->condition('test_id', $test_id)
         ->execute();
     }
     else {
-      $count = db_query('SELECT COUNT(test_id) FROM {simpletest_test_id}')->fetchField();
+      $count = $connection->query('SELECT COUNT(test_id) FROM {simpletest_test_id}')->fetchField();
 
       // Clear test results.
-      db_delete('simpletest')->execute();
-      db_delete('simpletest_test_id')->execute();
+      $connection->delete('simpletest')->execute();
+      $connection->delete('simpletest_test_id')->execute();
     }
 
     return $count;
@@ -696,147 +638,82 @@ function simpletest_mail_alter(&$message) {
 }
 
 /**
- * Implements hook_library_info().
- */
-function simpletest_library_info() {
-  $libraries['drupal.simpletest'] = array(
-    'title' => 'Simpletest',
-    'version' => \Drupal::VERSION,
-    'js' => array(
-      drupal_get_path('module', 'simpletest') . '/simpletest.js' => array(),
-    ),
-    'css' => array(
-      drupal_get_path('module', 'simpletest') . '/css/simpletest.module.css' => array(),
-    ),
-    'dependencies' => array(
-      array('system', 'jquery'),
-      array('system', 'drupal'),
-      array('system', 'drupalSettings'),
-      array('system', 'jquery.once'),
-      array('system', 'drupal.tableselect'),
-      array('system', 'drupal.debounce'),
-    ),
-  );
-
-  return $libraries;
-}
-
-/**
- * Get PHPUnit Classes
- *
- * @param bool $name_only
- *  If TRUE, returns a flat array of class names only.
- */
-function simpletest_phpunit_get_available_tests() {
-  // Try to load the class names array from cache.
-  if ($cache = \Drupal::cache()->get('simpletest_phpunit')) {
-    $test_classes = $cache->data;
-  }
-  else {
-    // If there was no cached data available we have to find the tests.
-    // Load the PHPUnit configuration file, which tells us where to find the
-    // tests.
-    $phpunit_config = simpletest_phpunit_configuration_filepath();
-    $configuration = PHPUnit_Util_Configuration::getInstance($phpunit_config);
-    // Find all the tests and get a list of unique class names.
-    $test_suite = $configuration->getTestSuiteConfiguration(NULL);
-    $test_classes = array();
-    foreach ($test_suite as $test) {
-      // PHPUnit returns a warning message if something is wrong with a test,
-      // throw an exception to avoid an error when trying to call getInfo() on
-      // this.
-      if ($test instanceof PHPUnit_Framework_Warning) {
-        throw new RuntimeException($test->getMessage());
-      }
-
-      $name = get_class($test);
-      if (!array_key_exists($name, $test_classes)) {
-        $test_classes[$name] = $test->getInfo();
-      }
-    }
-
-    // Since we have recalculated, we now need to store the new data into cache.
-    \Drupal::cache()->set('simpletest_phpunit', $test_classes);
-  }
-
-  return $test_classes;
-}
-
-/**
- * Converts phpunit's junit xml output to an array.
- *
- * The returned array of rows is in a format that can be inserted into the
- * simpletest results table.
+ * Converts PHPUnit's JUnit XML output to an array.
  *
  * @param $test_id
  *   The current test ID.
  * @param $phpunit_xml_file
- *   Path to the phpunit xml file.
+ *   Path to the PHPUnit XML file.
+ *
+ * @return array[]
+ *   The results as array of rows in a format that can be inserted into
+ *   {simpletest}.
  */
 function simpletest_phpunit_xml_to_rows($test_id, $phpunit_xml_file) {
   $contents = @file_get_contents($phpunit_xml_file);
   if (!$contents) {
     return;
   }
-  $xml = new SimpleXMLElement($contents);
   $records = array();
-  foreach ($xml->testsuite as $testsuite) {
-    foreach ($testsuite as $suite) {
-      // The file element won't be on testcase objects created with
-      // @dataProvider, so just use the one from the test suite at this level
-      // because it should be the same.
-      $file = (string) $suite->attributes()->file;
-
-      $testcases = simpletest_phpunit_find_testcases($suite);
-      foreach ($testcases as $testcase) {
-        $records[] = simpletest_phpunit_testcase_to_row($test_id, $testcase, $file);
-      }
-    }
+  $testcases = simpletest_phpunit_find_testcases(new SimpleXMLElement($contents));
+  foreach ($testcases as $testcase) {
+    $records[] = simpletest_phpunit_testcase_to_row($test_id, $testcase);
   }
   return $records;
 }
 
 /**
- * Find all testcases recursively from a testsuite list.
+ * Finds all test cases recursively from a test suite list.
  *
- * @param array $suite
- *   The list of testcases contained in the PHPUnit XML.
+ * @param \SimpleXMLElement $element
+ *   The PHPUnit xml to search for test cases.
+ * @param \SimpleXMLElement $suite
+ *   (Optional) The parent of the current element. Defaults to NULL.
  *
  * @return array
- *   A list of all testcases.
+ *   A list of all test cases.
  */
-function simpletest_phpunit_find_testcases($suite) {
+function simpletest_phpunit_find_testcases(\SimpleXMLElement $element, \SimpleXMLElement $parent = NULL) {
   $testcases = array();
 
-  foreach ($suite as $testcase) {
-    // Beside from being 'testcases', it could be also a group of testcases.
-    // This happens if you use a data provider in the phpunit tests.
-    if ($testcase->getName() === 'testcase') {
-      $testcases[] = $testcase;
+  if (!isset($parent)) {
+    $parent = $element;
+  }
+
+  if ($element->getName() === 'testcase' && (int) $parent->attributes()->tests > 0) {
+    // Add the class attribute if the testcase does not have one. This is the
+    // case for tests using a data provider. The name of the parent testsuite
+    // will be in the format class::method.
+    if (!$element->attributes()->class) {
+      $name = explode('::', $parent->attributes()->name, 2);
+      $element->addAttribute('class', $name[0]);
     }
-    elseif (isset($testcase->testcase) && ((int) $testcase->attributes()->tests) > 0) {
-      foreach ($testcase->testcase as $childtestcase) {
-        $testcases[] = $childtestcase;
+    $testcases[] = $element;
+  }
+  else {
+    foreach ($element as $child) {
+      $file = (string) $parent->attributes()->file;
+      if ($file && !$child->attributes()->file) {
+        $child->addAttribute('file', $file);
       }
+      $testcases = array_merge($testcases, simpletest_phpunit_find_testcases($child, $element));
     }
   }
   return $testcases;
 }
 
 /**
- * Converts a PHPUnit testcase result to a simpletest result row.
+ * Converts a PHPUnit test case result to a {simpletest} result row.
  *
  * @param int $test_id
  *   The current test ID.
  * @param \SimpleXMLElement $testcase
- *   The PHPUnit testcase represented as XML element.
- * @param string $file
- *   The path to test file, which was executed.
+ *   The PHPUnit test case represented as XML element.
  *
  * @return array
- *   An array containg the simpletest result row.
+ *   An array containing the {simpletest} result row.
  */
-function simpletest_phpunit_testcase_to_row($test_id, \SimpleXMLElement $testcase, $file) {
+function simpletest_phpunit_testcase_to_row($test_id, \SimpleXMLElement $testcase) {
   $message = '';
   $pass = TRUE;
   if ($testcase->failure) {
@@ -860,7 +737,7 @@ function simpletest_phpunit_testcase_to_row($test_id, \SimpleXMLElement $testcas
     'message_group' => 'Other',
     'function' => $attributes->class . '->' . $attributes->name . '()',
     'line' => $attributes->line ?: 0,
-    'file' => $file,
+    'file' => $attributes->file,
   );
   return $record;
 }

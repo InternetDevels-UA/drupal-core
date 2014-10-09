@@ -10,13 +10,13 @@ namespace Drupal\Tests\Core\Controller;
 use Drupal\Component\Utility\String;
 use Drupal\Core\Controller\TitleResolver;
 use Drupal\Tests\UnitTestCase;
+use Symfony\Component\HttpFoundation\ParameterBag;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Route;
 
 /**
- * Tests the title resolver.
- *
- * @see \Drupal\Core\Controller\TitleResolver
+ * @coversDefaultClass \Drupal\Core\Controller\TitleResolver
+ * @group Controller
  */
 class TitleResolverTest extends UnitTestCase {
 
@@ -40,14 +40,6 @@ class TitleResolverTest extends UnitTestCase {
    * @var \Drupal\Core\Controller\TitleResolver
    */
   protected $titleResolver;
-
-  public static function getInfo() {
-    return array(
-      'name' => 'Title resolver',
-      'description' => 'Tests the title resolver.',
-      'group' => 'Routing',
-    );
-  }
 
   protected function setUp() {
     $this->controllerResolver = $this->getMock('\Drupal\Core\Controller\ControllerResolverInterface');
@@ -88,6 +80,36 @@ class TitleResolverTest extends UnitTestCase {
       ->will($this->returnValue('translated title with context'));
 
     $this->assertEquals('translated title with context', $this->titleResolver->getTitle($request, $route));
+  }
+
+  /**
+   * Tests a static title with a parameter.
+   *
+   * @see \Drupal\Core\Controller\TitleResolver::getTitle()
+   *
+   * @dataProvider providerTestStaticTitleWithParameter
+   */
+  public function testStaticTitleWithParameter($title, $expected_title) {
+    $raw_variables = new ParameterBag(array('test' => 'value', 'test2' => 'value2'));
+    $request = new Request();
+    $request->attributes->set('_raw_variables', $raw_variables);
+
+    $route = new Route('/test-route', array('_title' => $title));
+
+    $this->translationManager->expects($this->once())
+      ->method('translate')
+      ->with($title, $this->logicalOr($this->arrayHasKey('@test'), $this->arrayHasKey('%test'), $this->arrayHasKey('!test')), array())
+      ->will($this->returnValue('static title value'));
+
+    $this->assertEquals($expected_title, $this->titleResolver->getTitle($request, $route));
+  }
+
+  public function providerTestStaticTitleWithParameter() {
+    return array(
+      array('static title @test', 'static title value'),
+      array('static title !test', 'static title value'),
+      array('static title %test', 'static title value'),
+    );
   }
 
   /**

@@ -1,6 +1,6 @@
 # Schema for the configuration files of the Options module.
 
-field.list_integer.settings:
+field.list_integer.storage_settings:
   type: mapping
   label: 'List (integer) settings'
   mapping:
@@ -8,18 +8,23 @@ field.list_integer.settings:
       type: sequence
       label: 'Allowed values list'
       sequence:
-        - type: string
-          label: 'Value'
+        - type: mapping
+          label: 'Allowed value with label'
+          mapping:
+            value:
+              type: integer
+              label: 'Value'
+            label:
+              type: label
+              label: 'Label'
     allowed_values_function:
       type: string
       label: 'Allowed values function'
 
-field.list_integer.instance_settings:
-  type: mapping
+field.list_integer.field_settings:
   label: 'List (integer)'
-  sequence:
-    - type: string
-      label: 'setting'
+  type: mapping
+  mapping: {  }
 
 field.list_integer.value:
   type: sequence
@@ -32,7 +37,7 @@ field.list_integer.value:
           type: integer
           label: 'Value'
 
-field.list_float.settings:
+field.list_float.storage_settings:
   type: mapping
   label: 'List (float) settings'
   mapping:
@@ -40,18 +45,23 @@ field.list_float.settings:
       type: sequence
       label: 'Allowed values list'
       sequence:
-        - type: string
-          label: 'Value'
+        - type: mapping
+          label: 'Allowed value with label'
+          mapping:
+            value:
+              type: float
+              label: 'Value'
+            label:
+              type: label
+              label: 'Label'
     allowed_values_function:
       type: string
       label: 'Allowed values function'
 
-field.list_float.instance_settings:
-  type: mapping
+field.list_float.field_settings:
   label: 'List (float)'
-  sequence:
-    - type: string
-      label: 'setting'
+  type: mapping
+  mapping: {  }
 
 field.list_float.value:
   type: sequence
@@ -64,7 +74,7 @@ field.list_float.value:
           type: string
           label: 'Value'
 
-field.list_text.settings:
+field.list_string.storage_settings:
   type: mapping
   label: 'List (text) settings'
   mapping:
@@ -72,20 +82,25 @@ field.list_text.settings:
       type: sequence
       label: 'Allowed values list'
       sequence:
-        - type: string
-          label: 'Value'
+        - type: mapping
+          label: 'Allowed value with label'
+          mapping:
+            value:
+              type: string
+              label: 'Value'
+            label:
+              type: label
+              label: 'Label'
     allowed_values_function:
       type: string
       label: 'Allowed values function'
 
-field.list_text.instance_settings:
-  type: mapping
+field.list_string.field_settings:
   label: 'List (float)'
-  sequence:
-    - type: string
-      label: 'setting'
+  type: mapping
+  mapping: {  }
 
-field.list_text.value:
+field.list_string.value:
   type: sequence
   label: 'Default value'
   sequence:
@@ -96,34 +111,42 @@ field.list_text.value:
           type: string
           label: 'Value'
 
-field.list_boolean.settings:
-  type: mapping
-  label: 'List (boolean) settings'
+entity_view_display.field.list_default:
+  type: entity_field_view_display_base
+  label: 'Options list default display settings'
   mapping:
-    allowed_values:
+    settings:
       type: sequence
-      label: 'Allowed values list'
+      label: 'Settings'
       sequence:
         - type: string
-          label: 'Value'
-    allowed_values_function:
-      type: string
-      label: 'Allowed values function'
 
-field.list_boolean.instance_settings:
-  type: mapping
-  label: 'List (boolean)'
-  sequence:
-    - type: string
-      label: 'setting'
+entity_view_display.field.list_key:
+  type: entity_field_view_display_base
+  label: 'Key format settings'
+  mapping:
+    settings:
+      type: sequence
+      label: 'Settings'
+      sequence:
+        - type: string
 
-field.list_boolean.value:
-  type: sequence
-  label: 'Default value'
-  sequence:
-    - type: mapping
-      label: 'Default'
-      mapping:
-        value:
-          type: boolean
-          label: 'Value'
+entity_form_display.field.options_buttons:
+  type: entity_field_form_display_base
+  label: 'Check boxes/radio buttons format settings'
+  mapping:
+    settings:
+      type: sequence
+      label: 'Settings'
+      sequence:
+        - type: string
+
+entity_form_display.field.options_select:
+  type: entity_field_form_display_base
+  label: 'Select list format settings'
+  mapping:
+    settings:
+      type: sequence
+      label: 'Settings'
+      sequence:
+        - type: string

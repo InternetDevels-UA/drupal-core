@@ -1,7 +1,7 @@
 services:
   plugin.manager.rest:
     class: Drupal\rest\Plugin\Type\ResourcePluginManager
-    arguments: ['@container.namespaces', '@cache.rest', '@language_manager', '@module_handler']
+    arguments: ['@container.namespaces', '@cache.discovery', '@module_handler']
   cache.rest:
     class: Drupal\Core\Cache\CacheBackendInterface
     tags:
@@ -9,11 +9,6 @@ services:
     factory_method: get
     factory_service: cache_factory
     arguments: [rest]
-  rest.route_subscriber:
-    class: Drupal\rest\EventSubscriber\RouteSubscriber
-    tags:
-      - { name: event_subscriber }
-    arguments: ['@plugin.manager.rest', '@config.factory']
   access_check.rest.csrf:
     class: Drupal\rest\Access\CSRFAccessCheck
     tags:
@@ -23,7 +18,15 @@ services:
     arguments: ['@rest.link_manager.type', '@rest.link_manager.relation']
   rest.link_manager.type:
     class: Drupal\rest\LinkManager\TypeLinkManager
-    arguments: ['@cache.cache']
+    arguments: ['@cache.default']
   rest.link_manager.relation:
     class: Drupal\rest\LinkManager\RelationLinkManager
-    arguments: ['@cache.cache']
+    arguments: ['@cache.default', '@entity.manager']
+  rest.resource_routes:
+    class: Drupal\rest\Routing\ResourceRoutes
+    arguments: ['@plugin.manager.rest', '@config.factory', '@logger.channel.rest']
+    tags:
+      - { name: 'event_subscriber' }
+  logger.channel.rest:
+    parent: logger.channel_base
+    arguments: ['rest']

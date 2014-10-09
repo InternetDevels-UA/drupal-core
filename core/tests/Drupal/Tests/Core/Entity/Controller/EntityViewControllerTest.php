@@ -5,25 +5,16 @@
  * Contains \Drupal\Tests\Core\Entity\Controller\EntityViewControllerTest.
  */
 
-namespace Drupal\Core\Tests\Entity\Controller;
+namespace Drupal\Tests\Core\Entity\Controller;
 
 use Drupal\Core\Entity\Controller\EntityViewController;
 use Drupal\Tests\UnitTestCase;
 
 /**
- * Tests the entity view controller.
- *
- * @see \Drupal\Core\Entity\Controller\EntityViewController
+ * @coversDefaultClass \Drupal\Core\Entity\Controller\EntityViewController
+ * @group Entity
  */
 class EntityViewControllerTest extends UnitTestCase{
-
-  public static function getInfo() {
-    return array(
-      'name' => 'Entity route enhancer test',
-      'description' => 'Tests the entity route enhancer.',
-      'group' => 'Entity'
-    );
-  }
 
   /**
    * Tests the enhancer method.
@@ -46,10 +37,34 @@ class EntityViewControllerTest extends UnitTestCase{
       ->method('getViewBuilder')
       ->will($this->returnValue($render_controller));
 
+    // Mock the 'entity_test' entity type.
+    $entity_type = $this->getMockBuilder('Drupal\Core\Entity\ContentEntityType')
+      ->disableOriginalConstructor()
+      ->getMock();
+    $entity_type->expects($this->once())
+      ->method('getKey')
+      ->with('label')
+      ->will($this->returnValue('name'));
+
+    // Mock the 'name' field's definition.
+    $field_definition = $this->getMock('Drupal\Core\Field\BaseFieldDefinition');
+    $field_definition->expects($this->any())
+      ->method('getDisplayOptions')
+      ->with('view')
+      ->will($this->returnValue(NULL));
+
     // Mock an 'entity_test' entity.
     $entity = $this->getMockBuilder('Drupal\entity_test\Entity\EntityTest')
       ->disableOriginalConstructor()
       ->getMock();
+    $entity->expects($this->once())
+      ->method('getEntityType')
+      ->will($this->returnValue($entity_type));
+    $entity->expects($this->any())
+      ->method('getFieldDefinition')
+      ->with('name')
+      ->will($this->returnValue($field_definition));
+
 
     // Initialize the controller to test.
     $controller = new EntityViewController($entity_manager);

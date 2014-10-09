@@ -4,12 +4,15 @@ system.site:
   type: mapping
   label: 'Site information'
   mapping:
+    uuid:
+      type: string
+      label: 'Site UUID'
     name:
       type: label
       label: 'Site name'
     mail:
       type: email
-      label: 'E-mail address'
+      label: 'Email address'
     slogan:
       type: label
       label: 'Slogan'
@@ -97,7 +100,7 @@ system.date:
         default:
           type: string
           label: 'Default time zone'
-      user:
+        user:
           type: mapping
           label: 'User'
           mapping:
@@ -111,61 +114,20 @@ system.date:
               type: boolean
               label: 'Remind users at login if their time zone is not set'
 
-system.date_format.*:
+system.diff:
   type: mapping
-  label: 'Date format'
+  label: 'Diff settings'
   mapping:
-    id:
-      type: string
-      label: 'Date format identifier'
-    uuid:
-      type: string
-      label: 'UUID'
-    label:
-      type: label
-      label: 'Date format label'
-    status:
-      type: boolean
-      label: 'Enabled'
-    locked:
-      type: boolean
-      label: 'Locked'
-    locales:
-      type: sequence
-      label: 'Languages'
-      sequence:
-        - type: string
-          label: 'Language'
-    pattern:
+    context:
       type: mapping
-      label: 'Format string'
+      label: 'Context'
       mapping:
-        php:
-          type: date_format
-          label: 'PHP date format'
-        intl:
-          type: string
-          label: 'Intl date format'
-    langcode:
-      type: string
-      label: 'Default language'
-
-system.fast_404:
-  type: mapping
-  label: 'Fast 404 settings'
-  mapping:
-    enabled:
-      type: boolean
-      label: 'Enabled'
-    paths:
-      type: string
-      label: 'Paths'
-    exclude_paths:
-      type: string
-      label: 'Exclude paths'
-    html:
-      type: string
-      label: 'HTML'
+        lines_leading:
+          type: integer
+          label: 'Number of leading lines in a diff'
+        lines_trailing:
+          type: integer
+          label: 'Number of trailing lines in a diff'
 
 system.filter:
   type: mapping
@@ -178,23 +140,6 @@ system.filter:
         - type: string
           label: 'Protocol'
 
-system.language.types:
-  type: mapping
-  label: 'Language types'
-  mapping:
-    all:
-      type: sequence
-      label: 'All language types'
-      sequence:
-        - type: string
-          label: 'Language type'
-    configurable:
-      type: sequence
-      label: 'Configurable language types'
-      sequence:
-        - type: string
-          label: 'Language type'
-
 system.logging:
   type: mapping
   label: 'Logging settings'
@@ -202,17 +147,6 @@ system.logging:
     error_level:
       type: string
       label: 'Error messages to display'
-
-system.menu:
-  type: mapping
-  label: 'Menu settings'
-  mapping:
-    active_menus_default:
-      type: sequence
-      label: 'Active menus'
-      sequence:
-        - type: string
-          label: 'Menu'
 
 system.performance:
   type: mapping
@@ -226,9 +160,9 @@ system.performance:
           type: mapping
           label: 'Page cache'
           mapping:
-            enabled:
+            use_internal:
               type: boolean
-              label: 'Cache pages for anonymous users'
+              label: 'Use internal page cache'
             max_age:
               type: integer
               label: 'Max age of page cache'
@@ -242,6 +176,22 @@ system.performance:
         gzip:
           type: boolean
           label: 'Compress CSS files'
+    fast_404:
+      type: mapping
+      label: 'Fast 404 settings'
+      mapping:
+        enabled:
+          type: boolean
+          label: 'Fast 404 enabled'
+        paths:
+          type: string
+          label: 'Regular expression to match'
+        exclude_paths:
+          type: string
+          label: 'Regular expression to not match'
+        html:
+          type: string
+          label: 'Fast 404 page html'
     js:
       type: mapping
       label: 'JavaScript performance settings'
@@ -262,9 +212,6 @@ system.performance:
     stale_file_threshold:
       type: integer
       label: 'Stale file threshold'
-    theme_link:
-      type: boolean
-      label: 'Force inline link rendering'
 
 system.rss:
   type: mapping
@@ -298,26 +245,129 @@ system.theme:
     admin:
       type: string
       label: 'Administration theme'
-    enabled:
-      type: sequence
-      label: 'Enabled themes'
-      sequence:
-        - type: string
-          label: 'Theme'
+    default:
+      type: string
+      label: 'Default theme'
 
 system.menu.*:
-  type: mapping
+  type: config_entity
   label: 'Menu'
   mapping:
     id:
       type: string
-      label: 'Menu identifier'
+      label: 'ID'
     label:
       type: label
-      label: 'Menu label'
+      label: 'Label'
     description:
       type: label
       label: 'Menu description'
-    langcode:
+    locked:
+      type: boolean
+      label: ''
+
+system.action.*:
+  type: config_entity
+  label: 'System action'
+  mapping:
+    id:
       type: string
-      label: 'Default language'
+      label: 'ID'
+    label:
+      type: label
+      label: 'Label'
+    type:
+      type: string
+      label: 'Type'
+    plugin:
+      type: string
+      label: 'Plugin'
+    configuration:
+      type: action.configuration.[%parent.plugin]
+
+system.file:
+  type: mapping
+  label: 'File system'
+  mapping:
+    allow_insecure_uploads:
+      type: boolean
+      label: 'Allow insecure uploads'
+    default_scheme:
+      type: string
+      label: 'Default download method'
+    path:
+      type: mapping
+      label: 'Path settings'
+      mapping:
+        private:
+          type: string
+          label: 'Private file system path'
+        temporary:
+          type: string
+          label: 'Temporary directory'
+    temporary_maximum_age:
+      type: integer
+      label: 'Maximum age for temporary files'
+
+system.image:
+  type: mapping
+  label: 'Image settings'
+  mapping:
+    toolkit:
+      type: string
+      label: 'Toolkit'
+
+system.image.gd:
+  type: mapping
+  label: 'Image settings'
+  mapping:
+    jpeg_quality:
+      type: integer
+      label: 'JPEG quality'
+
+system.mail:
+  type: mapping
+  label: 'Mail system'
+  mapping:
+    interface:
+      type: mapping
+      label: 'Interface'
+      mapping:
+        default:
+          type: string
+          label: 'Default'
+
+system.theme.global:
+  type: theme_settings
+  label: 'Theme global settings'
+
+block.settings.system_branding_block:
+  type: block_settings
+  label: 'Branding block'
+  mapping:
+    use_site_logo:
+      type: boolean
+      label: 'Use site logo'
+    use_site_name:
+      type: boolean
+      label: 'Use site name'
+    use_site_slogan:
+      type: boolean
+      label: 'Use site slogan'
+
+block.settings.system_menu_block:*:
+  type: block_settings
+  label: 'Menu block'
+  mapping:
+    level:
+      type: integer
+      label: 'Starting level'
+    depth:
+      type: integer
+      label: 'Maximum number of levels'
+
+condition.plugin.request_path:
+  type: condition.plugin
+  mapping:
+    pages:
+      type: string

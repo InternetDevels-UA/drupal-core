@@ -4,18 +4,12 @@ search.settings:
   type: mapping
   label: 'Search settings'
   mapping:
-    active_plugins:
-      type: sequence
-      label: 'Active search plugins'
-      sequence:
-        - type: string
-          label: 'Plugin'
     and_or_limit:
       type: integer
       label: 'AND/OR combination limit'
-    default_plugin:
+    default_page:
       type: string
-      label: 'Default search plugin'
+      label: 'Default search page'
     index:
       type: mapping
       label: 'Indexing settings'
@@ -69,3 +63,28 @@ search.settings:
             a:
               type: integer
               label: 'Tag a weight'
+    logging:
+      type: boolean
+      label: 'Log searches'
+
+search.page.*:
+  type: config_entity
+  label: 'Search page'
+  mapping:
+    id:
+      type: string
+      label: 'ID'
+    label:
+      type: label
+      label: 'Label'
+    path:
+      type: string
+      label: 'Search page path'
+    weight:
+      type: integer
+      label: 'Weight'
+    plugin:
+      type: string
+      label: 'Plugin'
+    configuration:
+      type: search.plugin.[%parent.plugin]

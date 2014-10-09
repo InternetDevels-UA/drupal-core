@@ -8,8 +8,6 @@
 namespace Drupal\Core\Validation\Plugin\Validation\Constraint;
 
 use Symfony\Component\Validator\Constraints\Choice;
-use Drupal\Component\Annotation\Plugin;
-use Drupal\Core\Annotation\Translation;
 
 /**
  * Checks for the value being allowed.
@@ -19,7 +17,7 @@ use Drupal\Core\Annotation\Translation;
  *   label = @Translation("Allowed values", context = "Validation")
  * )
  *
- * @see \Drupal\Core\TypedData\AllowedValuesInterface
+ * @see \Drupal\Core\TypedData\OptionsProviderInterface
  */
 class AllowedValuesConstraint extends Choice {
 

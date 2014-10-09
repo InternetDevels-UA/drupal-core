@@ -8,40 +8,30 @@
  *
  * @see autocomplete.js
  */
-/* Suggestion list */
-#autocomplete {
-  border: 1px solid;
-  overflow: hidden;
-  position: absolute;
-  z-index: 100;
-}
-#autocomplete ul {
-  list-style: none;
-  list-style-image: none;
-  margin: 0;
-  padding: 0;
-}
-#autocomplete li {
-  background: #fff;
-  color: #000;
-  cursor: default;
-  white-space: pre;
-}
 
 /* Animated throbber */
 .js input.form-autocomplete {
-  background-image: url(../../../misc/throbber.gif);
-  background-position: 100% 2px; /* LTR */
+  background-image: url(../../../misc/throbber-inactive.png);
+  background-position: 100% center; /* LTR */
   background-repeat: no-repeat;
 }
 .js[dir="rtl"] input.form-autocomplete {
-  background-position: 0% 2px;
+  background-position: 0% center;
 }
-.js input.throbbing {
-  background-position: 100% -18px; /* LTR */
+.js input.form-autocomplete.ui-autocomplete-loading {
+  background-image: url(../../../misc/throbber-active.gif);
+  background-position: 100% center; /* LTR */
 }
-.js[dir="rtl"] input.throbbing {
-  background-position: 0% -18px;
+.js[dir="rtl"] input.form-autocomplete.ui-autocomplete-loading {
+  background-position: 0% center;
+}
+
+/**
+ * Unboxed fieldsets for grouping form elements.
+ */
+.fieldgroup {
+  border-width: 0;
+  padding: 0;
 }
 
 /**
@@ -60,8 +50,6 @@
   display: block;
   margin: 0;
   width: 100%;
-  -moz-box-sizing: border-box;
-  -webkit-box-sizing: border-box;
   box-sizing: border-box;
 }
 .resize-none {
@@ -89,6 +77,18 @@
 body.drag {
   cursor: move;
 }
+tr.region-title {
+  font-weight: bold;
+}
+tr.region-message {
+  color: #999;
+}
+tr.region-populated {
+  display: none;
+}
+tr.add-new .tabledrag-changed {
+  display: none;
+}
 .draggable a.tabledrag-handle {
   cursor: move;
   float: left; /* LTR */
@@ -106,18 +106,15 @@ a.tabledrag-handle:hover {
   text-decoration: none;
 }
 a.tabledrag-handle .handle {
-  background: url(../../../misc/icons/787878/move.svg) no-repeat 6px 9px;
-  height: 13px;
-  margin: -0.4em 0.5em; /* LTR */
-  padding: 0.42em 0.5em; /* LTR */
-  width: 13px;
-}
-.no-svg a.tabledrag-handle .handle {
-  background: url(../../../misc/icons/787878/move.svg) no-repeat 6px 9px;
-}
-[dir="rtl"] a.tabledrag-handle .handle {
-  margin: -0.4em 0.5em;
+  background: url(../../../misc/icons/787878/move.svg) no-repeat 6px 7px;
+  height: 14px;
+  margin: -0.4em 0.5em 0;
   padding: 0.42em 0.5em;
+  width: 14px;
+}
+a.tabledrag-handle:hover .handle,
+a.tabledrag-handle:focus .handle {
+  background-image: url(../../../misc/icons/000000/move.svg);
 }
 .touch .draggable td {
   padding: 0 10px;
@@ -136,10 +133,6 @@ a.tabledrag-handle .handle {
 }
 .touch .draggable.drag a.tabledrag-handle .handle {
   background-position: 50% -32px;
-}
-.no-touch a.tabledrag-handle:hover .handle,
-.no-touch a.tabledrag-handle:focus .handle {
-  background-position: 6px -11px;
 }
 div.indentation {
   float: left; /* LTR */
@@ -182,6 +175,7 @@ table.sticky-header {
   background-color: #fff;
   margin-top: 0;
   z-index: 500;
+  top: 0;
 }
 
 /**
@@ -199,12 +193,12 @@ table.sticky-header {
   max-width: 100%;
   min-width: 100px;
   height: 16px;
-  background-color: #fff;
 }
 .progress__bar {
   background-color: #000;
   height: 1.5em;
-  width: 3%;
+  min-width: 3%;
+  max-width: 100%;
 }
 .progress__description,
 .progress__percentage {
@@ -242,7 +236,7 @@ table.sticky-header {
   float: right;
 }
 .ajax-progress-throbber .throbber {
-  background: transparent url(../../../misc/throbber.gif) no-repeat 0px -18px;
+  background: transparent url(../../../misc/throbber-active.gif) no-repeat 0px center;
   display: inline;
   padding: 1px 5px 2px;
 }
@@ -255,6 +249,24 @@ tr .ajax-progress-throbber .throbber {
 }
 .ajax-progress-bar {
   width: 16em;
+}
+
+/* Full screen  throbber */
+.ajax-progress-fullscreen {
+  /* Can't do center:50% middle: 50%, so approximate it for a typical window size. */
+  left: 49%;
+  position: fixed;
+  top: 48.5%;
+  z-index: 1000;
+  background-color: #232323;
+  background-image: url("../../../misc/loading-small.gif");
+  background-position: center center;
+  background-repeat: no-repeat;
+  border-radius: 7px;
+  height: 24px;
+  opacity: 0.9;
+  padding: 4px;
+  width: 24px;
 }
 
 /**
@@ -307,9 +319,9 @@ tr .ajax-progress-throbber .throbber {
 }
 
 /**
- * Hide elements visually, but keep them available for screen-readers.
+ * Hide elements visually, but keep them available for screen readers.
  *
- * Used for information required for screen-reader users to understand and use
+ * Used for information required for screen reader users to understand and use
  * the site where visual display is undesirable. Information provided in this
  * manner should be kept concise, to avoid unnecessary burden on the user.
  * "!important" is used to prevent unintentional overrides.
@@ -337,7 +349,7 @@ tr .ajax-progress-throbber .throbber {
 }
 
 /**
- * Hide visually and from screen-readers, but maintain layout.
+ * Hide visually and from screen readers, but maintain layout.
  */
 .invisible {
   visibility: hidden;
@@ -358,17 +370,53 @@ tr .ajax-progress-throbber .throbber {
 }
 
 /**
- * Content display classes.
+ * Text alignment classes.
  */
-.align-left {
+.text-align-left {
   text-align: left;
 }
-.align-right {
+.text-align-right {
   text-align: right;
 }
-.align-center {
+.text-align-center {
   text-align: center;
 }
-.align-justify {
+.text-align-justify {
   text-align: justify;
+}
+
+/**
+ * Alignment classes (images, videos, blockquotes …).
+ */
+.align-left {
+  float: left;
+}
+.align-right {
+  float: right;
+}
+.align-center {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/*
+ * Remove browser styles, especially for <buttons> and so on.
+ */
+.reset-appearance {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  border: 0 none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  line-height: inherit;
+}
+
+/*
+ * Contain positioned elements.
+ */
+.position-container {
+  position: relative;
 }

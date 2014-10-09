@@ -8,16 +8,13 @@
 namespace Drupal\Tests\Core\Utility {
 
 use Drupal\Core\Language\Language;
+use Drupal\Core\Url;
 use Drupal\Core\Utility\LinkGenerator;
 use Drupal\Tests\UnitTestCase;
-use Symfony\Cmf\Component\Routing\RouteObjectInterface;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\DependencyInjection\ParameterBag\ParameterBag;
 
 /**
- * Tests the link generator.
- *
- * @see \Drupal\Core\Utility\LinkGenerator
+ * @coversDefaultClass \Drupal\Core\Utility\LinkGenerator
+ * @group Utility
  */
 class LinkGeneratorTest extends UnitTestCase {
 
@@ -43,12 +40,11 @@ class LinkGeneratorTest extends UnitTestCase {
   protected $moduleHandler;
 
   /**
+   * The mocked URL Assembler service.
    *
-   * The mocked language manager.
-   *
-   * @var \PHPUnit_Framework_MockObject_MockObject
+   * @var \PHPUnit_Framework_MockObject_MockObject|\Drupal\Core\Utility\UnroutedUrlAssemblerInterface
    */
-  protected $languageManager;
+  protected $urlAssembler;
 
   /**
    * Contains the LinkGenerator default options.
@@ -57,19 +53,9 @@ class LinkGeneratorTest extends UnitTestCase {
     'query' => array(),
     'html' => FALSE,
     'language' => NULL,
+    'set_active_class' => FALSE,
+    'absolute' => FALSE,
   );
-
-  /**
-   * {@inheritdoc}
-   */
-  public static function getInfo() {
-    return array(
-      'name' => 'Link generator',
-      'description' => 'Tests the link generator.',
-      'group' => 'Common',
-    );
-  }
-
 
   /**
    * {@inheritdoc}
@@ -79,18 +65,9 @@ class LinkGeneratorTest extends UnitTestCase {
 
     $this->urlGenerator = $this->getMock('\Drupal\Core\Routing\UrlGenerator', array(), array(), '', FALSE);
     $this->moduleHandler = $this->getMock('Drupal\Core\Extension\ModuleHandlerInterface');
-    $this->languageManager = $this->getMock('Drupal\Core\Language\LanguageManager');
 
-    $this->linkGenerator = new LinkGenerator($this->urlGenerator, $this->moduleHandler, $this->languageManager);
-  }
-
-  /**
-   * Setup a proper language manager.
-   */
-  public function setUpLanguageManager() {
-    $this->languageManager->expects($this->any())
-      ->method('getLanguage')
-      ->will($this->returnValue(new Language(array('id' => 'en'))));
+    $this->linkGenerator = new LinkGenerator($this->urlGenerator, $this->moduleHandler);
+    $this->urlAssembler = $this->getMock('\Drupal\Core\Utility\UnroutedUrlAssemblerInterface');
   }
 
   /**
@@ -120,24 +97,88 @@ class LinkGeneratorTest extends UnitTestCase {
    *
    * @dataProvider providerTestGenerateHrefs
    */
-  public function testGenerateHrefs($route_name, array $parameters, $absolute, $url) {
+  public function testGenerateHrefs($route_name, array $parameters, $absolute, $expected_url) {
     $this->urlGenerator->expects($this->once())
       ->method('generateFromRoute')
       ->with($route_name, $parameters, array('absolute' => $absolute) + $this->defaultOptions)
-      ->will($this->returnValue($url));
+      ->will($this->returnValue($expected_url));
 
     $this->moduleHandler->expects($this->once())
       ->method('alter');
 
-    $this->setUpLanguageManager();
-    $request = new Request();
-    $this->linkGenerator->setRequest($request);
-
-    $result = $this->linkGenerator->generate('Test', $route_name, $parameters, array('absolute' => $absolute));
+    $url = new Url($route_name, $parameters, array('absolute' => $absolute));
+    $url->setUrlGenerator($this->urlGenerator);
+    $result = $this->linkGenerator->generate('Test', $url);
     $this->assertTag(array(
       'tag' => 'a',
-      'attributes' => array('href' => $url),
+      'attributes' => array('href' => $expected_url),
       ), $result);
+  }
+
+  /**
+   * Tests the generate() method with a route.
+   *
+   * @covers ::generate()
+   */
+  public function testGenerate() {
+    $this->urlGenerator->expects($this->once())
+      ->method('generateFromRoute')
+      ->with('test_route_1', array(), array('fragment' => 'the-fragment') + $this->defaultOptions)
+      ->will($this->returnValue('/test-route-1#the-fragment'));
+
+    $this->moduleHandler->expects($this->once())
+      ->method('alter')
+      ->with('link', $this->isType('array'));
+
+    $url = new Url('test_route_1', array(), array('fragment' => 'the-fragment'));
+    $url->setUrlGenerator($this->urlGenerator);
+
+    $result = $this->linkGenerator->generate('Test', $url);
+    $this->assertTag(array(
+      'tag' => 'a',
+      'attributes' => array(
+        'href' => '/test-route-1#the-fragment',
+      ),
+      'content' => 'Test',
+    ), $result);
+  }
+
+  /**
+   * Tests the generate() method with an external URL.
+   *
+   * The set_active_class option is set to TRUE to ensure this does not cause
+   * an error together with an external URL.
+   *
+   * @covers ::generate()
+   */
+  public function testGenerateExternal() {
+    $this->urlAssembler->expects($this->once())
+      ->method('assemble')
+      ->with('http://drupal.org', array('set_active_class' => TRUE, 'external' => TRUE) + $this->defaultOptions)
+      ->will($this->returnArgument(0));
+
+    $this->moduleHandler->expects($this->once())
+      ->method('alter')
+      ->with('link', $this->isType('array'));
+
+    $this->urlAssembler->expects($this->once())
+      ->method('assemble')
+      ->with('http://drupal.org', array('set_active_class' => TRUE, 'external' => TRUE) + $this->defaultOptions)
+      ->willReturnArgument(0);
+
+    $url = Url::fromUri('http://drupal.org');
+    $url->setUrlGenerator($this->urlGenerator);
+    $url->setUnroutedUrlAssembler($this->urlAssembler);
+    $url->setOption('set_active_class', TRUE);
+
+    $result = $this->linkGenerator->generate('Drupal', $url);
+    $this->assertTag(array(
+      'tag' => 'a',
+      'attributes' => array(
+        'href' => 'http://drupal.org',
+      ),
+      'content' => 'Drupal',
+    ), $result);
   }
 
   /**
@@ -154,9 +195,11 @@ class LinkGeneratorTest extends UnitTestCase {
       ));
 
     // Test that HTML attributes are added to the anchor.
-    $result = $this->linkGenerator->generate('Test', 'test_route_1', array(), array(
+    $url = new Url('test_route_1', array(), array(
       'attributes' => array('title' => 'Tooltip'),
     ));
+    $url->setUrlGenerator($this->urlGenerator);
+    $result = $this->linkGenerator->generate('Test', $url);
     $this->assertTag(array(
       'tag' => 'a',
       'attributes' => array(
@@ -179,9 +222,11 @@ class LinkGeneratorTest extends UnitTestCase {
         '/test-route-1?test=value'
       ));
 
-    $result = $this->linkGenerator->generate('Test', 'test_route_1', array(), array(
+    $url = new Url('test_route_1', array(), array(
       'query' => array('test' => 'value'),
     ));
+    $url->setUrlGenerator($this->urlGenerator);
+    $result = $this->linkGenerator->generate('Test', $url);
     $this->assertTag(array(
       'tag' => 'a',
       'attributes' => array(
@@ -203,7 +248,9 @@ class LinkGeneratorTest extends UnitTestCase {
         '/test-route-1?test=value'
       ));
 
-    $result = $this->linkGenerator->generate('Test', 'test_route_1', array('test' => 'value'), array());
+    $url = new Url('test_route_1', array('test' => 'value'), array());
+    $url->setUrlGenerator($this->urlGenerator);
+    $result = $this->linkGenerator->generate('Test', $url);
     $this->assertTag(array(
       'tag' => 'a',
       'attributes' => array(
@@ -225,9 +272,11 @@ class LinkGeneratorTest extends UnitTestCase {
         '/test-route-1?test=value'
       ));
 
-    $result = $this->linkGenerator->generate('Test', 'test_route_1', array(), array(
+    $url = new Url('test_route_1', array(), array(
       'key' => 'value',
     ));
+    $url->setUrlGenerator($this->urlGenerator);
+    $result = $this->linkGenerator->generate('Test', $url);
     $this->assertTag(array(
       'tag' => 'a',
       'attributes' => array(
@@ -250,7 +299,9 @@ class LinkGeneratorTest extends UnitTestCase {
       ));
 
     // Test that HTML link text is escaped by default.
-    $result = $this->linkGenerator->generate("<script>alert('XSS!')</script>", 'test_route_4');
+    $url = new Url('test_route_4');
+    $url->setUrlGenerator($this->urlGenerator);
+    $result = $this->linkGenerator->generate("<script>alert('XSS!')</script>", $url);
     $this->assertNotTag(array(
       'tag' => 'a',
       'attributes' => array('href' => '/test-route-4'),
@@ -280,9 +331,11 @@ class LinkGeneratorTest extends UnitTestCase {
       ));
 
     // Test that HTML tags are stripped from the 'title' attribute.
-    $result = $this->linkGenerator->generate('Test', 'test_route_5', array(), array(
+    $url = new Url('test_route_5', array(), array(
       'attributes' => array('title' => '<em>HTML Tooltip</em>'),
     ));
+    $url->setUrlGenerator($this->urlGenerator);
+    $result = $this->linkGenerator->generate('Test', $url);
     $this->assertTag(array(
       'tag' => 'a',
       'attributes' => array(
@@ -292,7 +345,9 @@ class LinkGeneratorTest extends UnitTestCase {
     ), $result);
 
     // Test that the 'html' option allows unsanitized HTML link text.
-    $result = $this->linkGenerator->generate('<em>HTML output</em>', 'test_route_5', array(), array('html' => TRUE));
+    $url = new Url('test_route_5', array(), array('html' => TRUE));
+    $url->setUrlGenerator($this->urlGenerator);
+    $result = $this->linkGenerator->generate('<em>HTML output</em>', $url);
     $this->assertTag(array(
       'tag' => 'a',
       'attributes' => array('href' => '/test-route-5'),
@@ -312,107 +367,86 @@ class LinkGeneratorTest extends UnitTestCase {
    *   service.
    */
   public function testGenerateActive() {
-    $this->urlGenerator->expects($this->exactly(7))
+    $this->urlGenerator->expects($this->exactly(5))
       ->method('generateFromRoute')
       ->will($this->returnValueMap(array(
         array('test_route_1', array(), FALSE, '/test-route-1'),
-        array('test_route_1', array(), FALSE, '/test-route-1'),
-        array('test_route_1', array(), FALSE, '/test-route-1'),
-        array('test_route_1', array(), FALSE, '/test-route-1'),
-        array('test_route_3', array(), FALSE, '/test-route-3'),
         array('test_route_3', array(), FALSE, '/test-route-3'),
         array('test_route_4', array('object' => '1'), FALSE, '/test-route-4/1'),
       )));
 
-    $this->moduleHandler->expects($this->exactly(7))
+    $this->urlGenerator->expects($this->exactly(4))
+      ->method('getPathFromRoute')
+      ->will($this->returnValueMap(array(
+        array('test_route_1', array(), 'test-route-1'),
+        array('test_route_3', array(), 'test-route-3'),
+        array('test_route_4', array('object' => '1'), 'test-route-4/1'),
+      )));
+
+    $this->moduleHandler->expects($this->exactly(5))
       ->method('alter');
 
-    $this->setUpLanguageManager();
-
-    // Render a link with a path different from the current path.
-    $request = new Request(array(), array(), array('system_path' => 'test-route-2'));
-    $this->linkGenerator->setRequest($request);
-    $result = $this->linkGenerator->generate('Test', 'test_route_1');
-    $this->assertNotTag(array(
-      'tag' => 'a',
-      'attributes' => array('class' => 'active'),
-    ), $result);
-
-    // Render a link with the same path as the current path.
-    $request = new Request(array(), array(), array('system_path' => 'test-route-1', RouteObjectInterface::ROUTE_NAME => 'test_route_1'));
-    // This attribute is expected to be set in a Drupal request by
-    // \Drupal\Core\ParamConverter\ParamConverterManager
-    $raw_variables = new ParameterBag();
-    $request->attributes->set('_raw_variables', $raw_variables);
-    $this->linkGenerator->setRequest($request);
-    $result = $this->linkGenerator->generate('Test', 'test_route_1');
+    // Render a link.
+    $url = new Url('test_route_1', array(), array('set_active_class' => TRUE));
+    $url->setUrlGenerator($this->urlGenerator);
+    $result = $this->linkGenerator->generate('Test', $url);
     $this->assertTag(array(
       'tag' => 'a',
-      'attributes' => array('class' => 'active'),
+      'attributes' => array('data-drupal-link-system-path' => 'test-route-1'),
     ), $result);
 
-    // Render a link with the same path and language as the current path.
-    $result = $this->linkGenerator->generate('Test', 'test_route_1');
-    $this->assertTag(array(
-      'tag' => 'a',
-      'attributes' => array('class' => 'active'),
-    ), $result);
-
-    // Render a link with the same path but a different language than the current
-    // path.
-    $result = $this->linkGenerator->generate(
-      'Test',
-      'test_route_1',
-      array(),
-      array('language' => new Language(array('id' => 'de')))
-    );
+    // Render a link with the set_active_class option disabled.
+    $url = new Url('test_route_1', array(), array('set_active_class' => FALSE));
+    $url->setUrlGenerator($this->urlGenerator);
+    $result = $this->linkGenerator->generate('Test', $url);
     $this->assertNotTag(array(
       'tag' => 'a',
-      'attributes' => array('class' => 'active'),
+      'attributes' => array('data-drupal-link-system-path' => 'test-route-1'),
     ), $result);
 
-    // Render a link with the same path and query parameter as the current path.
-    $request = new Request(array('value' => 'example_1'), array(), array('system_path' => 'test-route-3', RouteObjectInterface::ROUTE_NAME => 'test_route_3'));
-    $raw_variables = new ParameterBag();
-    $request->attributes->set('_raw_variables', $raw_variables);
-    $this->linkGenerator->setRequest($request);
-    $result = $this->linkGenerator->generate(
-      'Test',
-      'test_route_3',
-      array(),
-      array('query' => array('value' => 'example_1')
+    // Render a link with an associated language.
+    $url = new Url('test_route_1', array(), array(
+      'language' => new Language(array('id' => 'de')),
+      'set_active_class' => TRUE,
     ));
+    $url->setUrlGenerator($this->urlGenerator);
+    $result = $this->linkGenerator->generate('Test', $url);
     $this->assertTag(array(
       'tag' => 'a',
-      'attributes' => array('class' => 'active'),
+      'attributes' => array(
+        'data-drupal-link-system-path' => 'test-route-1',
+        'hreflang' => 'de',
+      ),
     ), $result);
 
-    // Render a link with the same path but a different query parameter than the
-    // current path.
-    $result = $this->linkGenerator->generate(
-      'Test',
-      'test_route_3',
-      array(),
-      array('query' => array('value' => 'example_2'))
-    );
-    $this->assertNotTag(array(
-      'tag' => 'a',
-      'attributes' => array('class' => 'active'),
-    ), $result);
-    // Render a link with the same path and query parameter as the current path.
-    $request = new Request(array('value' => 'example_1'), array(), array('system_path' => 'test-route-4/1', RouteObjectInterface::ROUTE_NAME => 'test_route_4'));
-    $raw_variables = new ParameterBag(array('object' => '1'));
-    $request->attributes->set('_raw_variables', $raw_variables);
-    $this->linkGenerator->setRequest($request);
-    $result = $this->linkGenerator->generate(
-      'Test',
-      'test_route_4',
-      array('object' => '1'),
-      array('query' => array('value' => 'example_1'))
-    );
+    // Render a link with a query parameter.
+    $url = new Url('test_route_3', array(), array(
+      'query' => array('value' => 'example_1'),
+      'set_active_class' => TRUE,
+    ));
+    $url->setUrlGenerator($this->urlGenerator);
+    $result = $this->linkGenerator->generate('Test', $url);
     $this->assertTag(array(
       'tag' => 'a',
-      'attributes' => array('class' => 'active'),
+      'attributes' => array(
+        'data-drupal-link-system-path' => 'test-route-3',
+        'data-drupal-link-query' => 'regexp:/.*value.*example_1.*/',
+      ),
+    ), $result);
+
+    // Render a link with route parameters and a query parameter.
+    $url = new Url('test_route_4', array('object' => '1'), array(
+      'query' => array('value' => 'example_1'),
+      'set_active_class' => TRUE,
+    ));
+    $url->setUrlGenerator($this->urlGenerator);
+    $result = $this->linkGenerator->generate('Test', $url);
+    $this->assertTag(array(
+      'tag' => 'a',
+      'attributes' => array(
+        'data-drupal-link-system-path' => 'test-route-4/1',
+        'data-drupal-link-query' => 'regexp:/.*value.*example_1.*/',
+      ),
     ), $result);
   }
 

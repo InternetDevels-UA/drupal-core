@@ -6,6 +6,7 @@
  */
 
 use Drupal\Component\Utility\Unicode;
+use Drupal\Core\Site\Settings;
 
 /**
  * Sets up the theming system for maintenance page.
@@ -14,40 +15,37 @@ use Drupal\Component\Utility\Unicode;
  * It also applies when the database is unavailable or bootstrap was not
  * complete. Seven is always used for the initial install and update
  * operations. In other cases, Bartik is used, but this can be overridden by
- * setting a "maintenance_theme" key in the $conf variable in settings.php.
+ * setting a "maintenance_theme" key in the $settings variable in settings.php.
  */
 function _drupal_maintenance_theme() {
-  global $theme, $theme_key, $conf;
-
-  // If $theme is already set, assume the others are set too, and do nothing.
-  if (isset($theme)) {
+  // If the theme is already set, assume the others are set too, and do nothing.
+  if (\Drupal::theme()->hasActiveTheme()) {
     return;
   }
 
-  require_once DRUPAL_ROOT . '/' . settings()->get('path_inc', 'core/includes/path.inc');
+  require_once __DIR__ . '/path.inc';
   require_once __DIR__ . '/theme.inc';
   require_once __DIR__ . '/common.inc';
   require_once __DIR__ . '/unicode.inc';
   require_once __DIR__ . '/file.inc';
   require_once __DIR__ . '/module.inc';
+  require_once __DIR__ . '/database.inc';
   Unicode::check();
 
   // Install and update pages are treated differently to prevent theming overrides.
   if (defined('MAINTENANCE_MODE') && (MAINTENANCE_MODE == 'install' || MAINTENANCE_MODE == 'update')) {
-    $custom_theme = settings()->get('maintenance_theme', 'seven');
+    if (drupal_installation_attempted()) {
+      $custom_theme = $GLOBALS['install_state']['theme'];
+    }
+    else {
+      $custom_theme = Settings::get('maintenance_theme', 'seven');
+    }
   }
   else {
-    // The bootstrap was not complete. So we are operating in a crippled
-    // environment, we need to bootstrap just enough to allow hook invocations
-    // to work. See _drupal_log_error().
-    if (!class_exists('Drupal\Core\Database\Database', FALSE)) {
-      require_once __DIR__ . '/database.inc';
-    }
-
     // Use the maintenance theme if specified, otherwise attempt to use the
     // default site theme.
     try {
-      $custom_theme = settings()->get('maintenance_theme', '');
+      $custom_theme = Settings::get('maintenance_theme', '');
       if (!$custom_theme) {
         $config = \Drupal::config('system.theme');
         $custom_theme = $config->get('default');
@@ -66,22 +64,30 @@ function _drupal_maintenance_theme() {
   }
 
   // Ensure that system.module is loaded.
-  if (!function_exists('_system_rebuild_theme_data')) {
-    $module_list['system'] = 'core/modules/system/system.module';
+  if (!function_exists('system_rebuild_theme_data')) {
     $module_handler = \Drupal::moduleHandler();
-    $module_handler->setModuleList($module_list);
+    $module_handler->addModule('system', 'core/modules/system');
     $module_handler->load('system');
   }
 
   $themes = list_themes();
 
-  // list_themes() triggers a drupal_alter() in maintenance mode, but we can't
-  // let themes alter the .info.yml data until we know a theme's base themes. So
-  // don't set global $theme until after list_themes() builds its cache.
-  $theme = $custom_theme;
+  // If no themes are installed yet, or if the requested custom theme is not
+  // installed, retrieve all available themes.
+  /** @var \Drupal\Core\Theme\ThemeInitialization $theme_init */
+  $theme_init = \Drupal::service('theme.initialization');
+  if (empty($themes) || !isset($themes[$custom_theme])) {
+    $theme_handler = \Drupal::service('theme_handler');
+    $themes = $theme_handler->rebuildThemeData();
+    $theme_handler->addTheme($themes[$custom_theme]);
+    \Drupal::theme()->setActiveTheme($theme_init->getActiveTheme($themes[$custom_theme], array()));
+  }
 
-  // Store the identifier for retrieving theme settings with.
-  $theme_key = $theme;
+  // list_themes() triggers a \Drupal\Core\Extension\ModuleHandler::alter() in
+  // maintenance mode, but we can't let themes alter the .info.yml data until
+  // we know a theme's base themes. So don't set active theme until after
+  // list_themes() builds its cache.
+  $theme = $custom_theme;
 
   // Find all our ancestor themes and put them in an array.
   $base_theme = array();
@@ -90,64 +96,11 @@ function _drupal_maintenance_theme() {
     $base_theme[] = $new_base_theme = $themes[$themes[$ancestor]->base_theme];
     $ancestor = $themes[$ancestor]->base_theme;
   }
-  _drupal_theme_initialize($themes[$theme], array_reverse($base_theme), '_theme_load_offline_registry');
-
-  // These CSS files are normally added by system_page_build(), except
-  // system.maintenance.css. When the database is inactive, it's not called so
-  // we add them here.
-  drupal_add_library('system', 'normalize');
-}
-
-/**
- * Builds the registry when the site needs to bypass any database calls.
- */
-function _theme_load_offline_registry($theme, $base_theme = NULL, $theme_engine = NULL) {
-  return _theme_build_registry($theme, $base_theme, $theme_engine);
-}
-
-/**
- * Returns HTML for a list of maintenance tasks to perform.
- *
- * @param $variables
- *   An associative array containing:
- *   - items: An associative array of maintenance tasks.
- *   - active: The key for the currently active maintenance task.
- *   - variant: A variant name to be used for a CSS class.
- *
- * @ingroup themeable
- */
-function theme_task_list($variables) {
-  $items = $variables['items'];
-  $active = $variables['active'];
-  if (isset($variables['variant'])) {
-    $class = $variables['variant'] . '-task-list';
-  }
-  else {
-    $class = 'task-list';
-  }
-
-  $done = isset($items[$active]) || $active == NULL;
-  $output = '<h2 class="visually-hidden">Installation tasks</h2>';
-  $output .= '<ol class="' . $class . '">';
-
-  foreach ($items as $k => $item) {
-    if ($active == $k) {
-      $class = 'active';
-      $status = '(' . t('active') . ')';
-      $done = FALSE;
-    }
-    else {
-      $class = $done ? 'done' : '';
-      $status = $done ? '(' . t('done') . ')' : '';
-    }
-    $output .= '<li';
-    $output .= ($class ? ' class="' . $class . '"' : '') . '>';
-    $output .= $item;
-    $output .= ($status ? '<span class="visually-hidden"> ' . $status . '</span>' : '');
-    $output .= '</li>';
-  }
-  $output .= '</ol>';
-  return $output;
+  // @todo This is just a workaround. Find a better way how to handle themes
+  //   on maintenance pages, see https://www.drupal.org/node/2322619.
+  \Drupal::theme()->setActiveTheme($theme_init->getActiveTheme($themes[$custom_theme], array_reverse($base_theme)));
+  // Prime the theme registry.
+  Drupal::service('theme.registry');
 }
 
 /**
@@ -170,9 +123,19 @@ function theme_authorize_report($variables) {
         if ($number === '#abort') {
           continue;
         }
-        $items[] = theme('authorize_message', array('message' => $log_message['message'], 'success' => $log_message['success']));
+        $authorize_message = array(
+          '#theme' => 'authorize_message',
+          '#message' => $log_message['message'],
+          '#success' => $log_message['success'],
+        );
+        $items[] = drupal_render($authorize_message);
       }
-      $output .= theme('item_list',  array('items' => $items, 'title' => $heading));
+      $item_list = array(
+        '#theme' => 'item_list',
+        '#items' => $items,
+        '#title' => $heading,
+      );
+      $output .= drupal_render($item_list);
     }
     $output .= '</div>';
   }
@@ -185,6 +148,8 @@ function theme_authorize_report($variables) {
  * @param $variables
  *   An associative array containing:
  *   - message: The log message.
+ *     It's the caller's responsibility to ensure this string contains no
+ *     dangerous HTML such as SCRIPT tags.
  *   - success: A boolean indicating failure or success.
  *
  * @ingroup themeable

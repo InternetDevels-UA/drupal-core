@@ -8,6 +8,8 @@
 namespace Drupal\Core\Field;
 
 use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\TypedData\DataDefinitionInterface;
 use Drupal\Core\TypedData\Plugin\DataType\Map;
 use Drupal\Core\TypedData\TypedDataInterface;
 use Drupal\user;
@@ -16,22 +18,44 @@ use Drupal\user;
  * An entity field item.
  *
  * Entity field items making use of this base class have to implement
- * ComplexDataInterface::getPropertyDefinitions().
+ * the static method propertyDefinitions().
  *
  * @see \Drupal\Core\Field\FieldItemInterface
+ * @ingroup field_types
  */
 abstract class FieldItemBase extends Map implements FieldItemInterface {
 
   /**
-   * Overrides \Drupal\Core\TypedData\TypedData::__construct().
+   * {@inheritdoc}
    */
-  public function __construct(array $definition, $name = NULL, TypedDataInterface $parent = NULL) {
+  public static function defaultStorageSettings() {
+    return array();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function defaultFieldSettings() {
+    return array();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function mainPropertyName() {
+    return 'value';
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function __construct(DataDefinitionInterface $definition, $name = NULL, TypedDataInterface $parent = NULL) {
     parent::__construct($definition, $name, $parent);
     // Initialize computed properties by default, such that they get cloned
     // with the whole item.
-    foreach ($this->getPropertyDefinitions() as $name => $definition) {
-      if (!empty($definition['computed'])) {
-        $this->properties[$name] = \Drupal::typedData()->getPropertyInstance($this, $name);
+    foreach ($this->definition->getPropertyDefinitions() as $name => $definition) {
+      if ($definition->isComputed()) {
+        $this->properties[$name] = \Drupal::typedDataManager()->getPropertyInstance($this, $name);
       }
     }
   }
@@ -63,8 +87,8 @@ abstract class FieldItemBase extends Map implements FieldItemInterface {
    * @return array
    *   The array of settings.
    */
-  protected function getFieldSettings() {
-    return $this->getFieldDefinition()->getFieldSettings();
+  protected function getSettings() {
+    return $this->getFieldDefinition()->getSettings();
   }
 
   /**
@@ -76,8 +100,8 @@ abstract class FieldItemBase extends Map implements FieldItemInterface {
    * @return mixed
    *   The setting value.
    */
-  protected function getFieldSetting($setting_name) {
-    return $this->getFieldDefinition()->getFieldSetting($setting_name);
+  protected function getSetting($setting_name) {
+    return $this->getFieldDefinition()->getSetting($setting_name);
   }
 
   /**
@@ -90,7 +114,7 @@ abstract class FieldItemBase extends Map implements FieldItemInterface {
     // Treat the values as property value of the first property, if no array is
     // given.
     if (isset($values) && !is_array($values)) {
-      $keys = array_keys($this->getPropertyDefinitions());
+      $keys = array_keys($this->definition->getPropertyDefinitions());
       $values = array($keys[0] => $values);
     }
     $this->values = $values;
@@ -188,15 +212,9 @@ abstract class FieldItemBase extends Map implements FieldItemInterface {
   /**
    * {@inheritdoc}
    */
-  public function getConstraints() {
-    $constraints = parent::getConstraints();
-    // If property constraints are present add in a ComplexData constraint for
-    // applying them.
-    if (!empty($this->definition['property_constraints'])) {
-      $constraints[] = \Drupal::typedData()->getValidationConstraintManager()
-        ->create('ComplexData', $this->definition['property_constraints']);
-    }
-    return $constraints;
+  public function view($display_options = array()) {
+    $view_builder = \Drupal::entityManager()->getViewBuilder($this->getEntity()->getEntityTypeId());
+    return $view_builder->viewFieldItem($this, $display_options);
   }
 
   /**
@@ -222,6 +240,53 @@ abstract class FieldItemBase extends Map implements FieldItemInterface {
   /**
    * {@inheritdoc}
    */
+  public static function generateSampleValue(FieldDefinitionInterface $field_definition) { }
+
+  /**
+   * {@inheritdoc}
+   */
   public function deleteRevision() { }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function storageSettingsForm(array &$form, FormStateInterface $form_state, $has_data) {
+    return array();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function fieldSettingsForm(array $form, FormStateInterface $form_state) {
+    return array();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function storageSettingsToConfigData(array $settings) {
+    return $settings;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function storageSettingsFromConfigData(array $settings) {
+    return $settings;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function fieldSettingsToConfigData(array $settings) {
+    return $settings;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function fieldSettingsFromConfigData(array $settings) {
+    return $settings;
+  }
 
 }

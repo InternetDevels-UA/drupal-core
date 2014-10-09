@@ -2,17 +2,17 @@
 
 /**
  * @file
- * Contains \Drupal\Core\TypedData\Type\BinaryInterface.
+ * Contains \Drupal\Core\TypedData\Type\DurationInterface.
  */
 
 namespace Drupal\Core\TypedData\Type;
 
-use Drupal\Core\TypedData\PrimitiveInterface;
-
 /**
- * Interface for binary data.
+ * Interface for durations.
+ *
+ * @ingroup typed_data
  */
-interface DurationInterface extends PrimitiveInterface {
+interface DurationInterface {
 
   /**
    * Returns the duration.

@@ -26,14 +26,17 @@ use Drupal\node\NodeInterface;
  * @param bool $load
  *   (optional) TRUE if $nodes contains an array of node IDs to be loaded, FALSE
  *   if it contains fully loaded nodes. Defaults to FALSE.
+ * @param bool $revisions
+ *   (optional) TRUE if $nodes contains an array of revision IDs instead of
+ *   node IDs. Defaults to FALSE; will be ignored if $load is FALSE.
  */
-function node_mass_update(array $nodes, array $updates, $langcode = NULL, $load = FALSE) {
+function node_mass_update(array $nodes, array $updates, $langcode = NULL, $load = FALSE, $revisions = FALSE) {
   // We use batch processing to prevent timeout when updating a large number
   // of nodes.
   if (count($nodes) > 10) {
     $batch = array(
       'operations' => array(
-        array('_node_mass_update_batch_process', array($nodes, $updates, $langcode, $load))
+        array('_node_mass_update_batch_process', array($nodes, $updates, $langcode, $load, $revisions))
       ),
       'finished' => '_node_mass_update_batch_finished',
       'title' => t('Processing'),
@@ -48,10 +51,13 @@ function node_mass_update(array $nodes, array $updates, $langcode = NULL, $load 
     batch_set($batch);
   }
   else {
-    if ($load) {
+    if ($load && !$revisions) {
       $nodes = entity_load_multiple('node', $nodes);
     }
     foreach ($nodes as $node) {
+      if ($load && $revisions) {
+        $node = entity_revision_load('node', $node);
+      }
       _node_mass_update_helper($node, $updates, $langcode);
     }
     drupal_set_message(t('The update has been performed.'));
@@ -97,10 +103,13 @@ function _node_mass_update_helper(NodeInterface $node, array $updates, $langcode
  * @param bool $load
  *   TRUE if $nodes contains an array of node IDs to be loaded, FALSE if it
  *   contains fully loaded nodes.
+ * @param bool $revisions
+ *   (optional) TRUE if $nodes contains an array of revision IDs instead of
+ *   node IDs. Defaults to FALSE; will be ignored if $load is FALSE.
  * @param array $context
  *   An array of contextual key/values.
  */
-function _node_mass_update_batch_process(array $nodes, array $updates, $load, array &$context) {
+function _node_mass_update_batch_process(array $nodes, array $updates, $load, $revisions, array &$context) {
   if (!isset($context['sandbox']['progress'])) {
     $context['sandbox']['progress'] = 0;
     $context['sandbox']['max'] = count($nodes);
@@ -113,12 +122,13 @@ function _node_mass_update_batch_process(array $nodes, array $updates, $load, ar
     // For each nid, load the node, reset the values, and save it.
     $node = array_shift($context['sandbox']['nodes']);
     if ($load) {
-      $node = entity_load('node', $node);
+      $node = $revisions ?
+        entity_revision_load('node', $node) : entity_load('node', $node);
     }
     $node = _node_mass_update_helper($node, $updates);
 
     // Store result for post-processing in the finished callback.
-    $context['results'][] = l($node->label(), 'node/' . $node->id());
+    $context['results'][] = \Drupal::l($node->label(), $node->urlInfo());
 
     // Update our progress information.
     $context['sandbox']['progress']++;
@@ -156,161 +166,4 @@ function _node_mass_update_batch_finished($success, $results, $operations) {
     $message .= drupal_render($item_list);
     drupal_set_message($message);
   }
-}
-
-/**
- * Returns the admin form object to node_admin_content().
- *
- * @ingroup forms
- */
-function node_admin_nodes() {
-  // Enable language column and filter if multiple languages are enabled.
-  $multilingual = language_multilingual();
-
-  // Build the sortable table header.
-  $header = array(
-    'title' => array(
-      'data' => t('Title'),
-      'field' => 'n.title',
-    ),
-    'type' => array(
-      'data' => t('Content type'),
-      'field' => 'n.type',
-      'class' => array(RESPONSIVE_PRIORITY_MEDIUM),
-    ),
-    'author' => array(
-      'data' => t('Author'),
-      'class' => array(RESPONSIVE_PRIORITY_LOW),
-    ),
-    'status' => array(
-      'data' => t('Status'),
-      'field' => 'n.status',
-    ),
-    'changed' => array(
-      'data' => t('Updated'),
-      'field' => 'n.changed',
-      'sort' => 'desc',
-      'class' => array(RESPONSIVE_PRIORITY_LOW)
-    ,)
-  );
-  if ($multilingual) {
-    $header['language_name'] = array('data' => t('Language'), 'field' => 'n.langcode', 'class' => array(RESPONSIVE_PRIORITY_LOW));
-  }
-  $header['operations'] = array('data' => t('Operations'));
-
-  $query = db_select('node_field_data', 'n')
-    ->extend('Drupal\Core\Database\Query\PagerSelectExtender')
-    ->extend('Drupal\Core\Database\Query\TableSortExtender');
-
-  if (!user_access('bypass node access')) {
-    // If the user is able to view their own unpublished nodes, allow them
-    // to see these in addition to published nodes. Check that they actually
-    // have some unpublished nodes to view before adding the condition.
-    if (user_access('view own unpublished content') && $own_unpublished = db_query('SELECT DISTINCT nid FROM {node_field_data} WHERE uid = :uid AND status = :status', array(':uid' => $GLOBALS['user']->id(), ':status' => 0))->fetchCol()) {
-      $query->condition(db_or()
-        ->condition('n.status', 1)
-        ->condition('n.nid', $own_unpublished, 'IN')
-      );
-    }
-    else {
-      // If not, restrict the query to published nodes.
-      $query->condition('n.status', 1);
-    }
-  }
-  $nids = $query
-    ->distinct()
-    ->fields('n', array('nid'))
-    ->limit(50)
-    ->orderByHeader($header)
-    ->addTag('node_access')
-    ->execute()
-    ->fetchCol();
-  $nodes = node_load_multiple($nids);
-
-  // Prepare the list of nodes.
-  $languages = language_list(Language::STATE_ALL);
-  $destination = drupal_get_destination();
-  $form['nodes'] = array(
-    '#type' => 'table',
-    '#header' => $header,
-    '#empty' => t('No content available.'),
-  );
-  foreach ($nodes as $node) {
-    $l_options = $node->language()->id != Language::LANGCODE_NOT_SPECIFIED && isset($languages[$node->language()->id]) ? array('language' => $languages[$node->language()->id]) : array();
-    $mark = array(
-      '#theme' => 'mark',
-      '#status' => node_mark($node->id(), $node->getChangedTime()),
-    );
-    $form['nodes'][$node->id()]['title'] = array(
-      '#type' => 'link',
-      '#title' => $node->label(),
-      '#href' => 'node/' . $node->id(),
-      '#options' => $l_options,
-      '#suffix' => ' ' . drupal_render($mark),
-    );
-    $form['nodes'][$node->id()]['type'] = array(
-      '#markup' => check_plain(node_get_type_label($node)),
-    );
-    $form['nodes'][$node->id()]['author'] = array(
-      '#theme' => 'username',
-      '#account' => $node->getAuthor(),
-    );
-    $form['nodes'][$node->id()]['status'] = array(
-      '#markup' => $node->isPublished() ? t('published') : t('not published'),
-    );
-    $form['nodes'][$node->id()]['changed'] = array(
-      '#markup' => format_date($node->getChangedTime(), 'short'),
-    );
-    if ($multilingual) {
-      $form['nodes'][$node->id()]['language_name'] = array(
-        '#markup' => $node->language()->name,
-      );
-    }
-
-    // Build a list of all the accessible operations for the current node.
-    $operations = array();
-    if (node_access('update', $node)) {
-      $operations['edit'] = array(
-        'title' => t('Edit'),
-        'href' => 'node/' . $node->id() . '/edit',
-        'query' => $destination,
-      );
-    }
-    if (node_access('delete', $node)) {
-      $operations['delete'] = array(
-        'title' => t('Delete'),
-        'href' => 'node/' . $node->id() . '/delete',
-        'query' => $destination,
-      );
-    }
-    if ($node->isTranslatable()) {
-      $operations['translate'] = array(
-        'title' => t('Translate'),
-        'href' => 'node/' . $node->id() . '/translations',
-        'query' => $destination,
-      );
-    }
-    $form['nodes'][$node->id()]['operations'] = array();
-    if (count($operations) > 1) {
-      // Render an unordered list of operations links.
-      $form['nodes'][$node->id()]['operations'] = array(
-        '#type' => 'operations',
-        '#subtype' => 'node',
-        '#links' => $operations,
-      );
-    }
-    elseif (!empty($operations)) {
-      // Render the first and only operation as a link.
-      $link = reset($operations);
-      $form['nodes'][$node->id()]['operations'] = array(
-        '#type' => 'link',
-        '#title' => $link['title'],
-        '#href' => $link['href'],
-        '#options' => array('query' => $link['query']),
-      );
-    }
-  }
-
-  $form['pager'] = array('#theme' => 'pager');
-  return $form;
 }

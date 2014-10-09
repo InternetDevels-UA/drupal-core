@@ -2,10 +2,11 @@
 
 /**
  * @file
- * Provide views data and handlers that aren't tied to any other module.
- *
- * @ingroup views_module_handlers
+ * Provide views data that isn't tied to any other module.
  */
+
+use Drupal\Component\Utility\NestedArray;
+use Drupal\system\ActionConfigEntityInterface;
 
 /**
  * Implements hook_views_data().
@@ -13,7 +14,7 @@
 function views_views_data() {
   $data['views']['table']['group'] = t('Global');
   $data['views']['table']['join'] = array(
-    // #global is a special flag which let's a table appear all the time.
+  // #global is a special flag which allows a table to appear all the time.
   '#global' => array(),
   );
 
@@ -90,6 +91,14 @@ function views_views_data() {
     ),
   );
 
+  $data['views']['messages'] = array(
+    'title' => t('Messages'),
+    'help' => t('Displays messages in an area.'),
+    'area' => array(
+      'id' => 'messages',
+    ),
+  );
+
   $data['views']['http_status_code'] = array(
     'title' => t('Response status code'),
     'help' => t('Alter the HTTP response status code used by this view, mostly helpful for empty results.'),
@@ -115,18 +124,44 @@ function views_views_data() {
   );
 
   // Registers an entity area handler per entity type.
-  foreach (entity_get_info() as $entity_type => $entity_info) {
-    // Exclude entity types, which cannot be rendered.
-    if (!empty($entity_info['controllers']['view_builder'])) {
-      $label = $entity_info['label'];
-      $data['views']['entity_' . $entity_type] = array(
+  foreach (\Drupal::entityManager()->getDefinitions() as $entity_type_id => $entity_type) {
+    // Excludes entity types, which cannot be rendered.
+    if ($entity_type->hasViewBuilderClass()) {
+      $label = $entity_type->getLabel();
+      $data['views']['entity_' . $entity_type_id] = array(
         'title' => t('Rendered entity - @label', array('@label' => $label)),
         'help' => t('Displays a rendered @label entity in an area.', array('@label' => $label)),
         'area' => array(
-          'entity_type' => $entity_type,
+          'entity_type' => $entity_type_id,
           'id' => 'entity',
         ),
       );
+    }
+  }
+
+  // Registers an action bulk form per entity.
+  foreach (\Drupal::entityManager()->getDefinitions() as $entity_type => $entity_info) {
+    $actions = array_filter(\Drupal::entityManager()->getStorage('action')->loadMultiple(), function (ActionConfigEntityInterface $action) use ($entity_type) {
+      return $action->getType() == $entity_type;
+    });
+    if (empty($actions)) {
+      continue;
+    }
+    $data[$entity_info->getBaseTable()][$entity_type . '_bulk_form'] = array(
+      'title' => t('Bulk update'),
+      'help' => t('Allows users to apply an action to one or more items.'),
+      'field' => array(
+        'id' => 'bulk_form',
+      ),
+    );
+  }
+
+  // Registers views data for the entity itself.
+  foreach (\Drupal::entityManager()->getDefinitions() as $entity_type_id => $entity_type) {
+    if ($entity_type->hasHandlerClass('views_data')) {
+      /** @var \Drupal\views\EntityViewsDataInterface $views_data */
+      $views_data = \Drupal::entityManager()->getHandler($entity_type_id, 'views_data');
+      $data = NestedArray::mergeDeep($data, $views_data->getViewsData());
     }
   }
 

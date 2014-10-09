@@ -71,13 +71,6 @@ class PoStreamReader implements PoStreamInterface, PoReaderInterface {
   private $_langcode = NULL;
 
   /**
-   * Size of the current PO stream.
-   *
-   * @var int
-   */
-  private $_size;
-
-  /**
    * File handle of the current PO stream.
    *
    * @var resource
@@ -167,7 +160,6 @@ class PoStreamReader implements PoStreamInterface, PoReaderInterface {
   public function open() {
     if (!empty($this->_uri)) {
       $this->_fd = fopen($this->_uri, 'rb');
-      $this->_size = ftell($this->_fd);
       $this->readHeader();
     }
     else {
@@ -247,11 +239,11 @@ class PoStreamReader implements PoStreamInterface, PoReaderInterface {
    * this line ends the current item, it is saved with setItemFromArray() with
    * data from $this->_current_item.
    *
-   * An internal state machine is maintained in this reader using $this->_context
-   * as the reading state. PO items are inbetween COMMENT states (when items have
-   * at least one line or comment inbetween them or indicated by MSGSTR or
-   * MSGSTR_ARR followed immediately by an MSGID or MSGCTXT (when items closely
-   * follow each other).
+   * An internal state machine is maintained in this reader using
+   * $this->_context as the reading state. PO items are in between COMMENT
+   * states (when items have at least one line or comment in between them) or
+   * indicated by MSGSTR or MSGSTR_ARR followed immediately by an MSGID or
+   * MSGCTXT (when items closely follow each other).
    *
    * @return
    *   FALSE if an error was logged, NULL otherwise. The errors are considered
@@ -446,7 +438,7 @@ class PoStreamReader implements PoStreamInterface, PoReaderInterface {
         return;
       }
       elseif (!strncmp("msgstr", $line, 6)) {
-        // A string pair for an msgidid (with optional context).
+        // A string pair for an msgid (with optional context).
 
         if (($this->_context != 'MSGID') && ($this->_context != 'MSGCTXT')) {
           // Strings are only valid within an id or context scope.

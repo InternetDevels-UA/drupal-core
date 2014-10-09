@@ -7,13 +7,16 @@
 
 namespace Drupal\Core\Queue;
 
-use Drupal\Component\Utility\Settings;
-use Symfony\Component\DependencyInjection\ContainerAware;
+use Drupal\Core\Site\Settings;
+use Symfony\Component\DependencyInjection\ContainerAwareInterface;
+use Symfony\Component\DependencyInjection\ContainerAwareTrait;
 
 /**
  * Defines the queue factory.
  */
-class QueueFactory extends ContainerAware {
+class QueueFactory implements ContainerAwareInterface {
+
+  use ContainerAwareTrait;
 
   /**
    * Instantiated queues, keyed by name.
@@ -25,7 +28,7 @@ class QueueFactory extends ContainerAware {
   /**
    * The settings object.
    *
-   * @var \Drupal\Component\Utility\Settings
+   * @var \Drupal\Core\Site\Settings
    */
   protected $settings;
 
@@ -47,7 +50,7 @@ class QueueFactory extends ContainerAware {
    *   least once is important, FALSE if scalability is the main concern. Defaults
    *   to FALSE.
    *
-   * @return \Drupal\Core\QueueStore\QueueInterface
+   * @return \Drupal\Core\Queue\QueueInterface
    *   A queue implementation for the given name.
    */
   public function get($name, $reliable = FALSE) {

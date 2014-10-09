@@ -1,8 +1,8 @@
 name: Standard
 type: profile
 description: 'Install with commonly used features pre-configured.'
-version: VERSION
-core: 8.x
+# version: VERSION
+# core: 8.x
 dependencies:
   - node
   - history
@@ -14,15 +14,15 @@ dependencies:
   - comment
   - contextual
   - contact
+  - menu_link_content
   - datetime
-  - custom_block
-  - edit
+  - block_content
+  - quickedit
   - editor
   - entity_reference
   - help
   - image
-  - menu
-  - number
+  - menu_ui
   - options
   - path
   - taxonomy
@@ -30,10 +30,18 @@ dependencies:
   - search
   - shortcut
   - toolbar
-  - overlay
   - field_ui
   - file
   - rdf
   - views
   - views_ui
   - tour
+themes:
+  - bartik
+  - seven
+
+# Information added by Drupal.org packaging script on 2014-10-01
+version: '8.0.0-beta1'
+core: '8.x'
+project: 'drupal'
+datestamp: 1412147204

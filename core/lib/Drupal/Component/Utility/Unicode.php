@@ -9,6 +9,8 @@ namespace Drupal\Component\Utility;
 
 /**
  * Provides Unicode-related conversions and operations.
+ *
+ * @ingroup utility
  */
 class Unicode {
 
@@ -91,14 +93,14 @@ EOD;
   const STATUS_ERROR = -1;
 
   /**
-   * Holds the multibyte capabilities of the current enviroment.
+   * Holds the multibyte capabilities of the current environment.
    *
    * @var int
    */
   protected static $status = 0;
 
   /**
-   * Get the current status of unicode/multibyte support on this enviroment.
+   * Get the current status of unicode/multibyte support on this environment.
    *
    * @return int
    *   The status of multibyte support. It can be one of:
@@ -107,14 +109,14 @@ EOD;
    *   - \Drupal\Component\Utility\Unicode::STATUS_SINGLEBYTE
    *     Standard PHP (emulated) unicode support.
    *   - \Drupal\Component\Utility\Unicode::STATUS_ERROR
-   *     An error occured. No unicode support.
+   *     An error occurred. No unicode support.
    */
   public static function getStatus() {
     return static::$status;
   }
 
   /**
-   * Sets the value for multibyte support status for the current enviroment.
+   * Sets the value for multibyte support status for the current environment.
    *
    * The following status keys are supported:
    *   - \Drupal\Component\Utility\Unicode::STATUS_MULTIBYTE
@@ -122,7 +124,7 @@ EOD;
    *   - \Drupal\Component\Utility\Unicode::STATUS_SINGLEBYTE
    *     Standard PHP (emulated) unicode support.
    *   - \Drupal\Component\Utility\Unicode::STATUS_ERROR
-   *     An error occured. No unicode support.
+   *     An error occurred. No unicode support.
    *
    * @param int $status
    *   The new status of multibyte support.
@@ -161,13 +163,17 @@ EOD;
       static::$status = static::STATUS_ERROR;
       return 'mbstring.encoding_translation';
     }
-    if (ini_get('mbstring.http_input') != 'pass') {
-      static::$status = static::STATUS_ERROR;
-      return 'mbstring.http_input';
-    }
-    if (ini_get('mbstring.http_output') != 'pass') {
-      static::$status = static::STATUS_ERROR;
-      return 'mbstring.http_output';
+    // mbstring.http_input and mbstring.http_output are deprecated and empty by
+    // default in PHP 5.6.
+    if (version_compare(PHP_VERSION, '5.6.0') == -1) {
+      if (ini_get('mbstring.http_input') != 'pass') {
+        static::$status = static::STATUS_ERROR;
+        return 'mbstring.http_input';
+      }
+      if (ini_get('mbstring.http_output') != 'pass') {
+        static::$status = static::STATUS_ERROR;
+        return 'mbstring.http_output';
+      }
     }
 
     // Set appropriate configuration.
@@ -258,7 +264,7 @@ EOD;
   }
 
   /**
-   * Uppercase a UTF-8 string.
+   * Converts a UTF-8 string to uppercase.
    *
    * @param string $text
    *   The string to run the operation on.
@@ -280,7 +286,7 @@ EOD;
   }
 
   /**
-   * Lowercase a UTF-8 string.
+   * Converts a UTF-8 string to lowercase.
    *
    * @param string $text
    *   The string to run the operation on.
@@ -302,16 +308,50 @@ EOD;
   }
 
   /**
-   * Capitalizes the first letter of a UTF-8 string.
+   * Capitalizes the first character of a UTF-8 string.
    *
    * @param string $text
    *   The string to convert.
    *
    * @return string
-   *   The string with the first letter as uppercase.
+   *   The string with the first character as uppercase.
    */
   public static function ucfirst($text) {
     return static::strtoupper(static::substr($text, 0, 1)) . static::substr($text, 1);
+  }
+
+  /**
+   * Converts the first character of a UTF-8 string to lowercase.
+   *
+   * @param string $text
+   *   The string that will be converted.
+   *
+   * @return string
+   *   The string with the first character as lowercase.
+   *
+   * @ingroup php_wrappers
+   */
+  public static function lcfirst($text) {
+    // Note: no mbstring equivalent!
+    return static::strtolower(static::substr($text, 0, 1)) . static::substr($text, 1);
+  }
+
+  /**
+   * Capitalizes the first character of each word in a UTF-8 string.
+   *
+   * @param string $text
+   *   The text that will be converted.
+   *
+   * @return string
+   *   The input $text with each word capitalized.
+   *
+   * @ingroup php_wrappers
+   */
+  public static function ucwords($text) {
+    $regex = '/(^|[' . static::PREG_CLASS_WORD_BOUNDARY . '])([^' . static::PREG_CLASS_WORD_BOUNDARY . '])/u';
+    return preg_replace_callback($regex, function(array $matches) {
+      return $matches[1] . Unicode::strtoupper($matches[2]);
+    }, $text);
   }
 
   /**

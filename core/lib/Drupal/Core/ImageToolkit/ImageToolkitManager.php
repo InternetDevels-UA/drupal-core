@@ -8,19 +8,24 @@
 namespace Drupal\Core\ImageToolkit;
 
 use Drupal\Core\Cache\CacheBackendInterface;
-use Drupal\Core\Config\ConfigFactory;
-use Drupal\Core\Language\LanguageManager;
+use Drupal\Core\Config\ConfigFactoryInterface;
+use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Plugin\DefaultPluginManager;
 
 /**
- * Manages toolkit plugins.
+ * Manages image toolkit plugins.
+ *
+ * @see \Drupal\Core\ImageToolkit\Annotation\ImageToolkit
+ * @see \Drupal\Core\ImageToolkit\ImageToolkitInterface
+ * @see \Drupal\Core\ImageToolkit\ImageToolkitBase
+ * @see plugin_api
  */
 class ImageToolkitManager extends DefaultPluginManager {
 
   /**
    * The config factory.
    *
-   * @var \Drupal\Core\Config\ConfigFactory
+   * @var \Drupal\Core\Config\ConfigFactoryInterface
    */
   protected $configFactory;
 
@@ -32,25 +37,25 @@ class ImageToolkitManager extends DefaultPluginManager {
    *   keyed by the corresponding namespace to look for plugin implementations.
    * @param \Drupal\Core\Cache\CacheBackendInterface $cache_backend
    *   Cache backend instance to use.
-   * @param \Drupal\Core\Language\LanguageManager $language_manager
-   *   The language manager.
-   * @param \Drupal\Core\Config\ConfigFactory $config_factory
+   * @param \Drupal\Core\Extension\ModuleHandlerInterface $module_handler
+   *   The module handler.
+   * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
    *   The config factory.
    */
-  public function __construct(\Traversable $namespaces, CacheBackendInterface $cache_backend, LanguageManager $language_manager, ConfigFactory $config_factory) {
-    parent::__construct('Plugin/ImageToolkit', $namespaces, 'Drupal\Core\ImageToolkit\Annotation\ImageToolkit');
+  public function __construct(\Traversable $namespaces, CacheBackendInterface $cache_backend, ModuleHandlerInterface $module_handler, ConfigFactoryInterface $config_factory) {
+    parent::__construct('Plugin/ImageToolkit', $namespaces, $module_handler, 'Drupal\Core\ImageToolkit\ImageToolkitInterface', 'Drupal\Core\ImageToolkit\Annotation\ImageToolkit');
 
-    $this->setCacheBackend($cache_backend, $language_manager, 'image_toolkit_plugins');
+    $this->setCacheBackend($cache_backend, 'image_toolkit_plugins');
     $this->configFactory = $config_factory;
   }
 
   /**
-   * Gets the default image toolkit.
+   * Gets the default image toolkit ID.
    *
-   * @return \Drupal\Core\ImageToolkit\ImageToolkitInterface
-   *   Object of the default toolkit, or FALSE on error.
+   * @return string|bool
+   *   ID of the default toolkit, or FALSE on error.
    */
-  public function getDefaultToolkit() {
+  public function getDefaultToolkitId() {
     $toolkit_id = $this->configFactory->get('system.image')->get('toolkit');
     $toolkits = $this->getAvailableToolkits();
 
@@ -61,14 +66,20 @@ class ImageToolkitManager extends DefaultPluginManager {
       $toolkit_id = key($toolkits);
     }
 
-    if ($toolkit_id) {
-      $toolkit = $this->createInstance($toolkit_id);
-    }
-    else {
-      $toolkit = FALSE;
-    }
+    return $toolkit_id;
+  }
 
-    return $toolkit;
+  /**
+   * Gets the default image toolkit.
+   *
+   * @return \Drupal\Core\ImageToolkit\ImageToolkitInterface
+   *   Object of the default toolkit, or FALSE on error.
+   */
+  public function getDefaultToolkit() {
+    if ($toolkit_id = $this->getDefaultToolkitId()) {
+      return $this->createInstance($toolkit_id);
+    }
+    return FALSE;
   }
 
   /**
@@ -91,4 +102,5 @@ class ImageToolkitManager extends DefaultPluginManager {
 
     return $output;
   }
+
 }

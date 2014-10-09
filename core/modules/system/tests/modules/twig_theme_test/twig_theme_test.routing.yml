@@ -3,11 +3,25 @@ twig_theme_test.php_variables:
   defaults:
     _content: '\Drupal\twig_theme_test\TwigThemeTestController::phpVariablesRender'
   requirements:
-    _permission: 'access content'
+    _access: 'TRUE'
 
 twig_theme_test.trans:
   path: '/twig-theme-test/trans'
   defaults:
     _content: '\Drupal\twig_theme_test\TwigThemeTestController::transBlockRender'
   requirements:
-    _permission: 'access content'
+    _access: 'TRUE'
+
+twig_theme_test_url_generator:
+  path: '/twig-theme-test/url-generator'
+  defaults:
+    _content: '\Drupal\twig_theme_test\TwigThemeTestController::urlGeneratorRender'
+  requirements:
+    _access: 'TRUE'
+
+twig_theme_test_link_generator:
+  path: '/twig-theme-test/link-generator'
+  defaults:
+    _content: '\Drupal\twig_theme_test\TwigThemeTestController::linkGeneratorRender'
+  requirements:
+    _access: 'TRUE'

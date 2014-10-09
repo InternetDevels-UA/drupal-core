@@ -5,11 +5,13 @@
  * Defines a field type and its formatters and widgets.
  */
 
-use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Access\AccessResult;
+use Drupal\Core\Entity\ContentEntityInterface;
+use Drupal\Core\Entity\Exception\FieldStorageDefinitionUpdateForbiddenException;
 use Drupal\Core\Field\FieldDefinitionInterface;
 use Drupal\Core\Field\FieldItemListInterface;
 use Drupal\Core\Session\AccountInterface;
-use Drupal\field\FieldException;
+use Drupal\field\FieldStorageConfigInterface;
 
 /**
  * Implements hook_field_widget_info_alter().
@@ -19,18 +21,18 @@ function field_test_field_widget_info_alter(&$info) {
 }
 
 /**
- * Implements hook_field_update_forbid().
+ * Implements hook_field_storage_config_update_forbid().
  */
-function field_test_field_update_forbid($field, $prior_field) {
-  if ($field->getFieldType() == 'test_field' && $field->getFieldSetting('unchangeable') != $prior_field->getFieldSetting('unchangeable')) {
-    throw new FieldException("field_test 'unchangeable' setting cannot be changed'");
+function field_test_field_storage_config_update_forbid(FieldStorageConfigInterface $field_storage, FieldStorageConfigInterface $prior_field_storage) {
+  if ($field_storage->getType() == 'test_field' && $field_storage->getSetting('unchangeable') != $prior_field_storage->getSetting('unchangeable')) {
+    throw new FieldStorageDefinitionUpdateForbiddenException("field_test 'unchangeable' setting cannot be changed'");
   }
 }
 
 /**
  * Sample 'default value' callback.
  */
-function field_test_default_value(EntityInterface $entity, $field, $instance) {
+function field_test_default_value(ContentEntityInterface $entity, FieldDefinitionInterface $definition) {
   return array(array('value' => 99));
 }
 
@@ -38,15 +40,15 @@ function field_test_default_value(EntityInterface $entity, $field, $instance) {
  * Implements hook_entity_field_access().
  */
 function field_test_entity_field_access($operation, FieldDefinitionInterface $field_definition, AccountInterface $account, FieldItemListInterface $items = NULL) {
-  if ($field_definition->getFieldName() == "field_no_{$operation}_access") {
-    return FALSE;
+  if ($field_definition->getName() == "field_no_{$operation}_access") {
+    return AccessResult::forbidden();
   }
 
   // Only grant view access to test_view_field fields when the user has
   // 'view test_view_field content' permission.
-  if ($field_definition->getFieldName() == 'test_view_field' && $operation == 'view' && !$account->hasPermission('view test_view_field content')) {
-    return FALSE;
+  if ($field_definition->getName() == 'test_view_field' && $operation == 'view') {
+    return AccessResult::forbiddenIf(!$account->hasPermission('view test_view_field content'))->cachePerRole();
   }
 
-  return TRUE;
+  return AccessResult::allowed();
 }

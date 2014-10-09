@@ -9,7 +9,6 @@ namespace Drupal\Core\Routing;
 
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\RouteCollection;
-use Symfony\Component\Routing\RequestContext;
 use Symfony\Cmf\Component\Routing\NestedMatcher\UrlMatcher as BaseUrlMatcher;
 
 /**
@@ -30,7 +29,16 @@ class UrlMatcher extends BaseUrlMatcher {
     $context = new RequestContext();
     $context->fromRequest($request);
     $this->setContext($context);
-    return $this->match('/' . $request->attributes->get('_system_path'));
+    if ($request->attributes->has('_system_path')) {
+      // _system_path never has leading or trailing slashes.
+      $path = '/' . $request->attributes->get('_system_path');
+    }
+    else {
+      // getPathInfo() always has leading slash, and might or might not have a
+      // trailing slash.
+      $path = rtrim($request->getPathInfo(), '/');
+    }
+    return $this->match($path);
   }
 
 }

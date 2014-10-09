@@ -49,29 +49,64 @@ interface ModuleHandlerInterface {
   public function reload();
 
   /**
-   * Returns a list of currently active modules.
+   * Returns the list of currently active modules.
    *
-   * @return array
+   * @return \Drupal\Core\Extension\Extension[]
    *   An associative array whose keys are the names of the modules and whose
-   *   values are the module filenames.
+   *   values are Extension objects.
    */
   public function getModuleList();
 
   /**
-   * Explicitly sets the moduleList property to the passed in array of modules.
+   * Returns a module extension object from the currently active modules list.
    *
-   * @param array $module_list
+   * @param string $name
+   *   The name of the module to return.
+   *
+   * @return \Drupal\Core\Extension\Extension
+   *   An extension object.
+   *
+   * @throws \InvalidArgumentException
+   *   Thrown when the requested module does not exist.
+   */
+  public function getModule($name);
+
+  /**
+   * Sets an explicit list of currently active modules.
+   *
+   * @param \Drupal\Core\Extension\Extension[] $module_list
    *   An associative array whose keys are the names of the modules and whose
-   *   values are the module filenames.
+   *   values are Extension objects.
    */
   public function setModuleList(array $module_list = array());
+
+  /**
+   * Adds a module to the list of currently active modules.
+   *
+   * @param string $name
+   *   The module name; e.g., 'node'.
+   * @param string $path
+   *   The module path; e.g., 'core/modules/node'.
+   */
+  public function addModule($name, $path);
+
+  /**
+   * Adds an installation profile to the list of currently active modules.
+   *
+   * @param string $name
+   *   The profile name; e.g., 'standard'.
+   * @param string $path
+   *   The profile path; e.g., 'core/profiles/standard'.
+   */
+  public function addProfile($name, $path);
 
   /**
    * Determines which modules require and are required by each module.
    *
    * @param array $modules
    *   An array of module objects keyed by module name. Each object contains
-   *   information discovered during a Drupal\Core\SystemListing scan.
+   *   information discovered during a Drupal\Core\Extension\ExtensionDiscovery
+   *   scan.
    *
    * @return
    *   The same array with the new keys for each module:
@@ -80,7 +115,7 @@ interface ModuleHandlerInterface {
    *   - required_by: An array with the keys being the modules that will not work
    *     without this module.
    *
-   * @see \Drupal\Core\SystemListing
+   * @see \Drupal\Core\Extension\ExtensionDiscovery
    */
   public function buildModuleDependencies(array $modules);
 
@@ -154,6 +189,11 @@ interface ModuleHandlerInterface {
   public function getImplementations($hook);
 
   /**
+   * Write the hook implementation info to the cache.
+   */
+  public function writeCache();
+
+  /**
    * Resets the cached list of hook implementations.
    */
   public function resetImplementations();
@@ -185,7 +225,7 @@ interface ModuleHandlerInterface {
    * @return mixed
    *   The return value of the hook implementation.
    */
-  public function invoke($module, $hook, $args = array());
+  public function invoke($module, $hook, array $args = array());
 
   /**
    * Invokes a hook in all enabled modules that implement it.
@@ -199,7 +239,7 @@ interface ModuleHandlerInterface {
    *   An array of return values of the hook implementations. If modules return
    *   arrays from their implementations, those are merged into one array.
    */
-  public function invokeAll($hook, $args = array());
+  public function invokeAll($hook, array $args = array());
 
   /**
    * Passes alterable variables to specific hook_TYPE_alter() implementations.
@@ -305,5 +345,16 @@ interface ModuleHandlerInterface {
    * @return array
    */
   public function getModuleDirectories();
+
+  /**
+   * Gets the human readable name of a given module.
+   *
+   * @param string $module
+   *   The machine name of the module which title should be shown.
+   *
+   * @return string
+   *   Returns the human readable name of the module.
+   */
+  public function getName($theme);
 
 }

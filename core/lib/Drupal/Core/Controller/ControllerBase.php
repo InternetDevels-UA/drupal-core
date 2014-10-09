@@ -7,6 +7,11 @@
 
 namespace Drupal\Core\Controller;
 
+use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
+use Drupal\Core\Routing\LinkGeneratorTrait;
+use Drupal\Core\Routing\UrlGeneratorTrait;
+use Drupal\Core\StringTranslation\StringTranslationTrait;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 
 /**
@@ -27,8 +32,13 @@ use Symfony\Component\HttpFoundation\RedirectResponse;
  * service.
  *
  * @see \Drupal\Core\DependencyInjection\ContainerInjectionInterface
+ *
+ * @ingroup menu
  */
-abstract class ControllerBase {
+abstract class ControllerBase implements ContainerInjectionInterface {
+  use StringTranslationTrait;
+  use LinkGeneratorTrait;
+  use UrlGeneratorTrait;
 
   /**
    * The entity manager.
@@ -38,18 +48,18 @@ abstract class ControllerBase {
   protected $entityManager;
 
   /**
-   * The language manager.
+   * The entity form builder.
    *
-   * @var \Drupal\Core\Language\LanguageManager
+   * @var \Drupal\Core\Entity\EntityFormBuilderInterface
    */
-  protected $languageManager;
+  protected $entityFormBuilder;
 
   /**
-   * The translation manager.
+   * The language manager.
    *
-   * @var \Drupal\Core\StringTranslation\TranslationInterface
+   * @var \Drupal\Core\Language\LanguageManagerInterface
    */
-  protected $translationManager;
+  protected $languageManager;
 
   /**
    * The configuration factory.
@@ -64,13 +74,6 @@ abstract class ControllerBase {
    * @var \Drupal\Core\KeyValueStore\KeyValueStoreInterface
    */
   protected $keyValue;
-
-  /**
-   * The url generator.
-   *
-   * @var \Drupal\Core\Routing\UrlGeneratorInterface
-   */
-  protected $urlGenerator;
 
   /**
    * The current user service.
@@ -94,6 +97,20 @@ abstract class ControllerBase {
   protected $moduleHandler;
 
   /**
+   * The form builder.
+   *
+   * @var \Drupal\Core\Form\FormBuilderInterface
+   */
+  protected $formBuilder;
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function create(ContainerInterface $container) {
+    return new static();
+  }
+
+  /**
    * Retrieves the entity manager service.
    *
    * @return \Drupal\Core\Entity\EntityManagerInterface
@@ -107,16 +124,29 @@ abstract class ControllerBase {
   }
 
   /**
+   * Retrieves the entity form builder.
+   *
+   * @return \Drupal\Core\Entity\EntityFormBuilderInterface
+   *   The entity form builder.
+   */
+  protected function entityFormBuilder() {
+    if (!$this->entityFormBuilder) {
+      $this->entityFormBuilder = $this->container()->get('entity.form_builder');
+    }
+    return $this->entityFormBuilder;
+  }
+
+  /**
    * Returns the requested cache bin.
    *
    * @param string $bin
    *   (optional) The cache bin for which the cache object should be returned,
-   *   defaults to 'cache'.
+   *   defaults to 'default'.
    *
    * @return \Drupal\Core\Cache\CacheBackendInterface
    *   The cache object associated with the specified bin.
    */
-  protected function cache($bin = 'cache') {
+  protected function cache($bin = 'default') {
     return $this->container()->get('cache.' . $bin);
   }
 
@@ -189,29 +219,15 @@ abstract class ControllerBase {
   }
 
   /**
-   * Returns the URL generator service.
+   * Returns the form builder service.
    *
-   * @return \Drupal\Core\Routing\UrlGeneratorInterface
-   *   The URL generator service.
+   * @return \Drupal\Core\Form\FormBuilderInterface
    */
-  protected function urlGenerator() {
-    if (!$this->urlGenerator) {
-      $this->urlGenerator = $this->container()->get('url_generator');
+  protected function formBuilder() {
+    if (!$this->formBuilder) {
+      $this->formBuilder = $this->container()->get('form_builder');
     }
-    return $this->urlGenerator;
-  }
-
-  /**
-   * Renders a link to a route given a route name and its parameters.
-   *
-   * @see \Drupal\Core\Utility\LinkGeneratorInterface::generate() for details
-   *   on the arguments, usage, and possible exceptions.
-   *
-   * @return string
-   *   An HTML string containing a link to the given route and parameters.
-   */
-  public function l($text, $route_name, array $parameters = array(), array $options = array()) {
-    return $this->container()->get('link_generator')->generate($text, $route_name, $parameters, $options);
+    return $this->formBuilder;
   }
 
   /**
@@ -228,31 +244,9 @@ abstract class ControllerBase {
   }
 
   /**
-   * Translates a string to the current language or to a given language.
-   *
-   * See the t() documentation for details.
-   */
-  protected function t($string, array $args = array(), array $options = array()) {
-    return $this->translationManager()->translate($string, $args, $options);
-  }
-
-  /**
-   * Returns the translation manager.
-   *
-   * @return \Drupal\Core\StringTranslation\TranslationInterface
-   *   The translation manager.
-   */
-  protected function translationManager() {
-    if (!$this->translationManager) {
-      $this->translationManager = $this->container()->get('string_translation');
-    }
-    return $this->translationManager;
-  }
-
-  /**
    * Returns the language manager service.
    *
-   * @return \Drupal\Core\Language\LanguageManager
+   * @return \Drupal\Core\Language\LanguageManagerInterface
    *   The language manager.
    */
   protected function languageManager() {
@@ -265,15 +259,20 @@ abstract class ControllerBase {
   /**
    * Returns the service container.
    *
+   * This method is marked private to prevent sub-classes from retrieving
+   * services from the container through it. Instead,
+   * \Drupal\Core\DependencyInjection\ContainerInjectionInterface should be used
+   * for injecting services.
+   *
    * @return \Symfony\Component\DependencyInjection\ContainerInterface $container
    *   The service container.
    */
-  protected function container() {
+  private function container() {
     return \Drupal::getContainer();
   }
 
   /**
-   * Returns a redirect response object for the specified
+   * Returns a redirect response object for the specified route.
    *
    * @param string $route_name
    *   The name of the route to which to redirect.
@@ -281,25 +280,12 @@ abstract class ControllerBase {
    *   Parameters for the route.
    * @param int $status
    *   The HTTP redirect status code for the redirect. The default is 302 Found.
+   *
    * @return \Symfony\Component\HttpFoundation\RedirectResponse
    *   A redirect response object that may be returned by the controller.
    */
   public function redirect($route_name, array $route_parameters = array(), $status = 302) {
-    $url = $this->urlGenerator()->generate($route_name, $route_parameters, TRUE);
+    $url = $this->url($route_name, $route_parameters, ['absolute' => TRUE]);
     return new RedirectResponse($url, $status);
   }
-
-  /**
-   * Generates a URL or path for a specific route based on the given parameters.
-   *
-   * @see \Drupal\Core\Routing\UrlGeneratorInterface::generateFromRoute() for
-   *   details on the arguments, usage, and possible exceptions.
-   *
-   * @return string
-   *   The generated URL for the given route.
-   */
-  public function url($route_name, $route_parameters = array(), $options = array()) {
-    return $this->urlGenerator()->generateFromRoute($route_name, $route_parameters, $options);
-  }
-
 }

@@ -21,11 +21,9 @@ class SpecialAttributesRouteSubscriber extends RouteSubscriberBase {
   /**
    * {@inheritdoc}
    */
-  protected function alterRoutes(RouteCollection $collection, $module) {
+  protected function alterRoutes(RouteCollection $collection) {
     $special_variables = array(
-      '_account',
       'system_path',
-      '_maintenance',
       '_legacy',
       '_authentication_provider',
       '_raw_variables',
@@ -34,16 +32,12 @@ class SpecialAttributesRouteSubscriber extends RouteSubscriberBase {
       '_content',
       '_form',
     );
-
-    foreach ($collection->all() as $route) {
+    foreach ($collection->all() as $name => $route) {
       if ($not_allowed_variables = array_intersect($route->compile()->getVariables(), $special_variables)) {
-        $placeholders = array('@variables' => implode(', ', $not_allowed_variables));
-        drupal_set_message(String::format('The following variables are reserved names by drupal: @variables', $placeholders));
-        watchdog('error', 'The following variables are reserved names by drupal: @variables', $placeholders);
-        return FALSE;
+        $reserved = implode(', ', $not_allowed_variables);
+        trigger_error(sprintf('Route %s uses reserved variable names: %s', $name, $reserved), E_USER_WARNING);
       }
     }
-    return TRUE;
   }
 
   /**
@@ -53,11 +47,12 @@ class SpecialAttributesRouteSubscriber extends RouteSubscriberBase {
    *   The route build event.
    *
    * @return bool
-   *   Returns TRUE if the variables were succesfully replaced, otherwise FALSE.
+   *   Returns TRUE if the variables were successfully replaced, otherwise
+   *   FALSE.
    */
   public function onAlterRoutes(RouteBuildEvent $event) {
     $collection = $event->getRouteCollection();
-    return $this->alterRoutes($collection, $event->getModule());
+    return $this->alterRoutes($collection);
   }
 
 }

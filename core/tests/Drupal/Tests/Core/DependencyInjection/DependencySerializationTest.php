@@ -7,60 +7,44 @@
 
 namespace Drupal\Tests\Core\DependencyInjection;
 
-use Drupal\Core\DependencyInjection\DependencySerialization;
+use Drupal\Core\DependencyInjection\Container;
+use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Drupal\Tests\UnitTestCase;
-use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\ContainerAwareInterface;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
- * Tests the dependency serialization base class.
- *
- * @see \Drupal\Core\DependencyInjection\DependencySerialization
+ * @coversDefaultClass \Drupal\Core\DependencyInjection\DependencySerializationTrait
+ * @group DependencyInjection
  */
 class DependencySerializationTest extends UnitTestCase {
 
   /**
-   * {@inheritdoc}
-   */
-  public static function getInfo() {
-    return array(
-      'name' => 'Service dependency serialization',
-      'description' => 'Tests the dependency serialization base class.',
-      'group' => 'System'
-    );
-  }
-
-  /**
-   * Tests serialization and unserialization.
+   * @covers ::__sleep
+   * @covers ::__wakeup
    */
   public function testSerialization() {
     // Create a pseudo service and dependency injected object.
     $service = new \stdClass();
     $service->_serviceId = 'test_service';
-    $container = $this->getMock('Drupal\Core\DependencyInjection\Container');
-    $container->expects($this->exactly(1))
-      ->method('get')
-      ->with('test_service')
-      ->will($this->returnValue($service));
+    $container = new Container();
+    $container->set('test_service', $service);
+    $container->set('service_container', $container);
     \Drupal::setContainer($container);
 
-    $dependencySerialization = new TestClass($service);
+    $dependencySerialization = new DependencySerializationTestDummy($service);
+    $dependencySerialization->setContainer($container);
 
     $string = serialize($dependencySerialization);
     $object = unserialize($string);
 
-    // The original object got _serviceIds added so let's remove it to check
-    // equality
-    unset($dependencySerialization->_serviceIds);
+    $string = serialize($dependencySerialization);
+    /** @var \Drupal\Tests\Core\DependencyInjection\DependencySerializationTestDummy $object */
+    $dependencySerialization = unserialize($string);
 
-    // Ensure dependency injected object remains the same after serialization.
-    $this->assertEquals($dependencySerialization, $object);
-
-    // Ensure that _serviceIds does not exist on the object anymore.
-    $this->assertFalse(isset($object->_serviceIds));
-
-    // Ensure that both the service and the variable are in the unserialized
-    // object.
-    $this->assertSame($service, $object->service);
+    $this->assertSame($service, $dependencySerialization->service);
+    $this->assertSame($container, $dependencySerialization->container);
+    $this->assertEmpty($dependencySerialization->getServiceIds());
   }
 
 }
@@ -68,7 +52,9 @@ class DependencySerializationTest extends UnitTestCase {
 /**
  * Defines a test class which has a single service as dependency.
  */
-class TestClass extends DependencySerialization {
+class DependencySerializationTestDummy implements ContainerAwareInterface {
+
+  use DependencySerializationTrait;
 
   /**
    * A test service.
@@ -78,11 +64,11 @@ class TestClass extends DependencySerialization {
   public $service;
 
   /**
-   * {@inheritdoc}
+   * The container.
    *
-   * Make the property accessible for the test.
+   * @var \Symfony\Component\DependencyInjection\ContainerInterface
    */
-  public $_serviceIds;
+  public $container;
 
   /**
    * Constructs a new TestClass object.
@@ -94,4 +80,17 @@ class TestClass extends DependencySerialization {
     $this->service = $service;
   }
 
+  /**
+   * {@inheritdoc}
+   */
+  public function setContainer(ContainerInterface $container = NULL) {
+    $this->container = $container;
+  }
+
+  /**
+   * Gets the stored service IDs.
+   */
+  public function getServiceIds() {
+    return $this->_serviceIds;
+  }
 }

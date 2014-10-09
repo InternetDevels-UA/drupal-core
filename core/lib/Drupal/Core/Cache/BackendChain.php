@@ -19,6 +19,8 @@ namespace Drupal\Core\Cache;
  * volatile backend but found in the persistent one will be propagated back up
  * to ensure fast retrieval on the next request. On cache sets and deletes, both
  * backends will be invoked to ensure consistency.
+ *
+ * @ingroup cache
  */
 
 class BackendChain implements CacheBackendInterface {
@@ -123,9 +125,18 @@ class BackendChain implements CacheBackendInterface {
   /**
    * Implements Drupal\Core\Cache\CacheBackendInterface::set().
    */
-  public function set($cid, $data, $expire = CacheBackendInterface::CACHE_PERMANENT, array $tags = array()) {
+  public function set($cid, $data, $expire = Cache::PERMANENT, array $tags = array()) {
     foreach ($this->backends as $backend) {
       $backend->set($cid, $data, $expire, $tags);
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function setMultiple(array $items) {
+    foreach ($this->backends as $backend) {
+      $backend->setMultiple($items);
     }
   }
 
@@ -211,24 +222,11 @@ class BackendChain implements CacheBackendInterface {
   }
 
   /**
-   * Implements Drupal\Core\Cache\CacheBackendInterface::isEmpty().
-   */
-  public function isEmpty() {
-    foreach ($this->backends as $backend) {
-      if (!$backend->isEmpty()) {
-        return FALSE;
-      }
-    }
-
-    return TRUE;
-  }
-
-  /**
    * {@inheritdoc}
    */
   public function removeBin() {
     foreach ($this->backends as $backend) {
-      $this->removeBin();
+      $backend->removeBin();
     }
   }
 

@@ -7,8 +7,6 @@
 
 namespace Drupal\Core\TypedData\Plugin\DataType;
 
-use Drupal\Core\TypedData\Annotation\DataType;
-use Drupal\Core\Annotation\Translation;
 use Drupal\Core\TypedData\TypedData;
 use Drupal\Core\TypedData\ComplexDataInterface;
 
@@ -22,12 +20,22 @@ use Drupal\Core\TypedData\ComplexDataInterface;
  * By default there is no metadata for contained properties. Extending classes
  * may want to override Map::getPropertyDefinitions() to define it.
  *
+ * @ingroup typed_data
+ *
  * @DataType(
  *   id = "map",
- *   label = @Translation("Map")
+ *   label = @Translation("Map"),
+ *   definition_class = "\Drupal\Core\TypedData\MapDataDefinition"
  * )
  */
 class Map extends TypedData implements \IteratorAggregate, ComplexDataInterface {
+
+  /**
+   * The data definition.
+   *
+   * @var \Drupal\Core\TypedData\ComplexDataDefinitionInterface
+   */
+  protected $definition;
 
   /**
    * An array of values for the contained properties.
@@ -37,23 +45,21 @@ class Map extends TypedData implements \IteratorAggregate, ComplexDataInterface 
   protected $values = array();
 
   /**
-   * The array of properties, each implementing the TypedDataInterface.
+   * The array of properties.
    *
-   * @var array
+   * @var \Drupal\Core\TypedData\TypedDataInterface[]
    */
   protected $properties = array();
 
   /**
-   * Implements \Drupal\Core\TypedData\ComplexDataInterface::getPropertyDefinitions().
+   * Gets an array of property definitions of contained properties.
+   *
+   * @return \Drupal\Core\TypedData\DataDefinitionInterface[]
+   *   An array of property definitions of contained properties, keyed by
+   *   property name.
    */
-  public function getPropertyDefinitions() {
-    $definitions = array();
-    foreach ($this->values as $name => $value) {
-      $definitions[$name] = array(
-        'type' => 'any',
-      );
-    }
-    return $definitions;
+  protected function getPropertyDefinitions() {
+    return $this->definition->getPropertyDefinitions();
   }
 
   /**
@@ -62,8 +68,8 @@ class Map extends TypedData implements \IteratorAggregate, ComplexDataInterface 
   public function getValue($include_computed = FALSE) {
     // Update the values and return them.
     foreach ($this->properties as $name => $property) {
-      $definition = $property->getDefinition();
-      if ($include_computed || empty($definition['computed'])) {
+      $definition = $property->getDataDefinition();
+      if ($include_computed || !$definition->isComputed()) {
         $value = $property->getValue();
         // Only write NULL values if the whole map is not NULL.
         if (isset($this->values) || isset($value)) {
@@ -122,7 +128,7 @@ class Map extends TypedData implements \IteratorAggregate, ComplexDataInterface 
         $value = $this->values[$property_name];
       }
       // If the property is unknown, this will throw an exception.
-      $this->properties[$property_name] = \Drupal::typedData()->getPropertyInstance($this, $property_name, $value);
+      $this->properties[$property_name] = \Drupal::typedDataManager()->getPropertyInstance($this, $property_name, $value);
     }
     return $this->properties[$property_name];
   }
@@ -131,7 +137,7 @@ class Map extends TypedData implements \IteratorAggregate, ComplexDataInterface 
    * Implements \Drupal\Core\TypedData\ComplexDataInterface::set().
    */
   public function set($property_name, $value, $notify = TRUE) {
-    if ($this->getPropertyDefinition($property_name)) {
+    if ($this->definition->getPropertyDefinition($property_name)) {
       $this->get($property_name)->setValue($value, $notify);
     }
     else {
@@ -149,8 +155,8 @@ class Map extends TypedData implements \IteratorAggregate, ComplexDataInterface 
    */
   public function getProperties($include_computed = FALSE) {
     $properties = array();
-    foreach ($this->getPropertyDefinitions() as $name => $definition) {
-      if ($include_computed || empty($definition['computed'])) {
+    foreach ($this->definition->getPropertyDefinitions() as $name => $definition) {
+      if ($include_computed || !$definition->isComputed()) {
         $properties[$name] = $this->get($name);
       }
     }
@@ -158,23 +164,14 @@ class Map extends TypedData implements \IteratorAggregate, ComplexDataInterface 
   }
 
   /**
-   * Implements \Drupal\Core\TypedData\ComplexDataInterface::getPropertyValues().
+   * {@inheritdoc}
    */
-  public function getPropertyValues() {
+  public function toArray() {
     $values = array();
     foreach ($this->getProperties() as $name => $property) {
       $values[$name] = $property->getValue();
     }
     return $values;
-  }
-
-  /**
-   * Implements \Drupal\Core\TypedData\ComplexDataInterface::setPropertyValues().
-   */
-  public function setPropertyValues($values) {
-    foreach ($values as $name => $value) {
-      $this->get($name)->setValue($value);
-    }
   }
 
   /**
@@ -185,25 +182,12 @@ class Map extends TypedData implements \IteratorAggregate, ComplexDataInterface 
   }
 
   /**
-   * Implements \Drupal\Core\TypedData\ComplexDataInterface::getPropertyDefinition().
-   */
-  public function getPropertyDefinition($name) {
-    $definitions = $this->getPropertyDefinitions();
-    if (isset($definitions[$name])) {
-      return $definitions[$name];
-    }
-    else {
-      return FALSE;
-    }
-  }
-
-  /**
    * Implements \Drupal\Core\TypedData\ComplexDataInterface::isEmpty().
    */
   public function isEmpty() {
     foreach ($this->properties as $property) {
-      $definition = $property->getDefinition();
-      if (empty($definition['computed']) && $property->getValue() !== NULL) {
+      $definition = $property->getDataDefinition();
+      if (!$definition->isComputed() && $property->getValue() !== NULL) {
         return FALSE;
       }
     }

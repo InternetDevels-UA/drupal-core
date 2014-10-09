@@ -4,29 +4,20 @@ field.settings:
   type: mapping
   label: 'Field settings'
   mapping:
-    language_fallback:
-      type: boolean
-      label: 'Whether the field display falls back to global language fallback configuration'
     purge_batch_size:
       type: integer
       label: 'Maximum number of field data records to purge'
 
-field.field.*.*:
-  type: mapping
+field.storage.*.*:
+  type: config_entity
   label: 'Field'
   mapping:
     id:
       type: string
-      label: 'Machine name'
-    uuid:
+      label: 'ID'
+    field_name:
       type: string
-      label: 'UUID'
-    status:
-      type: boolean
-      label: 'Status'
-    langcode:
-      type: string
-      label: 'Default language'
+      label: 'Field name'
     entity_type:
       type: string
       label: 'Entity type'
@@ -34,13 +25,10 @@ field.field.*.*:
       type: string
       label: 'Type'
     settings:
-      type: field.[%parent.type].settings
+      type: field.[%parent.type].storage_settings
     module:
       type: string
       label: 'Module'
-    active:
-      type: boolean
-      label: 'Active'
     locked:
       type: boolean
       label: 'Locked'
@@ -57,47 +45,9 @@ field.field.*.*:
         - type: sequence
           label: 'Indexes'
           sequence:
-            - type: string
-              label: 'Column'
+            - type: ignore
+              label: 'Index'
 
-field.instance.*.*.*:
-  type: mapping
-  label: 'Field instance'
-  mapping:
-    id:
-      type: string
-      label: 'ID'
-    uuid:
-      type: string
-      label: 'UUID'
-    status:
-      type: boolean
-      label: 'Status'
-    langcode:
-      type: string
-      label: 'Default language'
-    field_uuid:
-      type: string
-      label: 'Field UUID'
-    bundle:
-      type: string
-      label: 'Bundle'
-    label:
-      type: label
-      label: 'Label'
-    description:
-      type: text
-      label: 'Help text'
-    required:
-      type: boolean
-      label: 'Required field'
-    default_value:
-      type: field.[%parent.field_type].value
-    default_value_function:
-      type: string
-      label: 'Default value function'
-    settings:
-      type: field.[%parent.field_type].instance_settings
-    field_type:
-      type: string
-      label: 'Field type'
+field.field.*.*.*:
+  type: field_config_base
+  label: 'Field'

@@ -3,8 +3,8 @@
 #simpletest-form-table th.select-all {
   width: 1em;
 }
-th.simpletest_test {
-  width: 16em;
+th.simpletest-test-label {
+  width: 40%;
 }
 
 .simpletest-image {

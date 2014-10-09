@@ -9,7 +9,12 @@ namespace Drupal\Component\Plugin;
 /**
  * Base class for plugins wishing to support metadata inspection.
  */
-abstract class PluginBase implements PluginInspectionInterface {
+abstract class PluginBase implements PluginInspectionInterface, DerivativeInspectionInterface {
+
+  /**
+   * A string which is used to separate base plugin IDs from the derivative ID.
+   */
+  const DERIVATIVE_SEPARATOR = ':';
 
   /**
    * The plugin_id.
@@ -28,6 +33,13 @@ abstract class PluginBase implements PluginInspectionInterface {
   /**
    * Configuration information passed into the plugin.
    *
+   * When using an interface like
+   * \Drupal\Component\Plugin\ConfigurablePluginInterface, this is where the
+   * configuration should be stored.
+   *
+   * Plugin configuration is optional, so plugin implementations must provide
+   * their own setters and getters.
+   *
    * @var array
    */
   protected $configuration;
@@ -39,10 +51,10 @@ abstract class PluginBase implements PluginInspectionInterface {
    *   A configuration array containing information about the plugin instance.
    * @param string $plugin_id
    *   The plugin_id for the plugin instance.
-   * @param array $plugin_definition
+   * @param mixed $plugin_definition
    *   The plugin implementation definition.
    */
-  public function __construct(array $configuration, $plugin_id, array $plugin_definition) {
+  public function __construct(array $configuration, $plugin_id, $plugin_definition) {
     $this->configuration = $configuration;
     $this->pluginId = $plugin_id;
     $this->pluginDefinition = $plugin_definition;
@@ -58,10 +70,30 @@ abstract class PluginBase implements PluginInspectionInterface {
   /**
    * {@inheritdoc}
    */
+  public function getBaseId() {
+    $plugin_id = $this->getPluginId();
+    if (strpos($plugin_id, static::DERIVATIVE_SEPARATOR)) {
+      list($plugin_id) = explode(static::DERIVATIVE_SEPARATOR, $plugin_id, 2);
+    }
+    return $plugin_id;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getDerivativeId() {
+    $plugin_id = $this->getPluginId();
+    $derivative_id = NULL;
+    if (strpos($plugin_id, static::DERIVATIVE_SEPARATOR)) {
+      list(, $derivative_id) = explode(static::DERIVATIVE_SEPARATOR, $plugin_id, 2);
+    }
+    return $derivative_id;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
   public function getPluginDefinition() {
     return $this->pluginDefinition;
   }
-
-  // Note: Plugin configuration is optional so its left to the plugin type to
-  // require a getter as part of its interface.
 }

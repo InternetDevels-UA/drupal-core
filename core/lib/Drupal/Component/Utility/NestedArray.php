@@ -9,6 +9,8 @@ namespace Drupal\Component\Utility;
 
 /**
  * Provides helpers to perform operations on nested arrays and array keys of variable depth.
+ *
+ * @ingroup utility
  */
 class NestedArray {
 
@@ -32,10 +34,10 @@ class NestedArray {
    * $value = NestedArray::getValue($form, $parents);
    * @endcode
    *
-   * The return value will be NULL, regardless of whether the actual value is
-   * NULL or whether the requested key does not exist. If it is required to know
-   * whether the nested array key actually exists, pass a third argument that is
-   * altered by reference:
+   * A return value of NULL is ambiguous, and can mean either that the requested
+   * key does not exist, or that the actual value is NULL. If it is required to
+   * know whether the nested array key actually exists, pass a third argument
+   * that is altered by reference:
    * @code
    * $key_exists = NULL;
    * $value = NestedArray::getValue($form, $parents, $key_exists);

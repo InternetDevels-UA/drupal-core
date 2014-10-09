@@ -7,38 +7,36 @@
 
 namespace Drupal\Core\Theme;
 
-use Drupal\Core\Access\StaticAccessCheckInterface;
-use Drupal\Core\Session\AccountInterface;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Routing\Route;
+use Drupal\Core\Access\AccessResult;
+use Drupal\Core\Routing\Access\AccessInterface;
 
 /**
- * Access check for a theme.
+ * Provides access checking for themes for routing and theme negotiation.
  */
-class ThemeAccessCheck implements StaticAccessCheckInterface {
+class ThemeAccessCheck implements AccessInterface {
 
   /**
-   * {@inheritdoc}
+   * Checks access to the theme for routing.
+   *
+   * @param string $theme
+   *   The name of a theme.
+   *
+   * @return \Drupal\Core\Access\AccessResultInterface
+   *   The access result.
    */
-  public function appliesTo() {
-    return array('_access_theme');
+  public function access($theme) {
+    // Cacheable until the theme is modified.
+    return AccessResult::allowedIf($this->checkAccess($theme))->addCacheTags(array('theme:' . $theme));
   }
 
   /**
-   * {@inheritdoc}
-   */
-  public function access(Route $route, Request $request, AccountInterface $account) {
-    return $this->checkAccess($request->attributes->get('theme')) ? static::ALLOW : static::DENY;
-  }
-
-  /**
-   * Checks access to a theme.
+   * Indicates whether the theme is accessible based on whether it is installed.
    *
    * @param string $theme
    *   The name of a theme.
    *
    * @return bool
-   *   TRUE if the theme is enabled, FALSE otherwise.
+   *   TRUE if the theme is installed, FALSE otherwise.
    */
   public function checkAccess($theme) {
     $themes = list_themes();

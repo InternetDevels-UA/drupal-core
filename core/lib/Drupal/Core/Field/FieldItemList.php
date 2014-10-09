@@ -7,22 +7,22 @@
 
 namespace Drupal\Core\Field;
 
+use Drupal\Core\Access\AccessResult;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Language\LanguageInterface;
+use Drupal\Core\Entity\ContentEntityInterface;
 use Drupal\Core\Session\AccountInterface;
+use Drupal\Core\TypedData\DataDefinitionInterface;
+use Drupal\Core\TypedData\Plugin\DataType\ItemList;
 use Drupal\Core\TypedData\TypedDataInterface;
-use Drupal\Core\TypedData\ItemList;
-use Drupal\Core\Language\Language;
 
 /**
  * Represents an entity field; that is, a list of field item objects.
  *
- * An entity field is a list of field items, which contain only primitive
- * properties or entity references. Note that even single-valued entity
- * fields are represented as list of items, however for easy access to the
- * contained item the entity field delegates __get() and __set() calls
- * directly to the first item.
- *
- * Supported settings (below the definition's 'settings' key) are:
- * - default_value: (optional) If set, the default value to apply to the field.
+ * An entity field is a list of field items, each containing a set of
+ * properties. Note that even single-valued entity fields are represented as
+ * list of field items, however for easy access to the contained item the entity
+ * field delegates __get() and __set() calls directly to the first item.
  */
 class FieldItemList extends ItemList implements FieldItemListInterface {
 
@@ -39,14 +39,13 @@ class FieldItemList extends ItemList implements FieldItemListInterface {
    *
    * @var string
    */
-  protected $langcode = Language::LANGCODE_DEFAULT;
+  protected $langcode = LanguageInterface::LANGCODE_NOT_SPECIFIED;
 
   /**
-   * Overrides TypedData::__construct().
+   * {@inheritdoc}
    */
-  public function __construct(array $definition, $name = NULL, TypedDataInterface $parent = NULL) {
+  public function __construct(DataDefinitionInterface $definition, $name = NULL, TypedDataInterface $parent = NULL) {
     parent::__construct($definition, $name, $parent);
-    $this->definition['field_name'] = $name;
     // Always initialize one empty item as most times a value for at least one
     // item will be present. That way prototypes created by
     // \Drupal\Core\TypedData\TypedDataManager::getPropertyInstance() will
@@ -58,7 +57,9 @@ class FieldItemList extends ItemList implements FieldItemListInterface {
    * {@inheritdoc}
    */
   public function getEntity() {
-    return $this->getParent();
+    // The "parent" is the TypedData object for the entity, we need to unwrap
+    // the actual entity.
+    return $this->getParent()->getValue();
   }
 
   /**
@@ -79,13 +80,27 @@ class FieldItemList extends ItemList implements FieldItemListInterface {
    * {@inheritdoc}
    */
   public function getFieldDefinition() {
-    return new FieldDefinition($this->definition);
+    return $this->definition;
   }
 
   /**
    * {@inheritdoc}
    */
-  public function filterEmptyValues() {
+  public function getSettings() {
+    return $this->definition->getSettings();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getSetting($setting_name) {
+    return $this->definition->getSetting($setting_name);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function filterEmptyItems() {
     if (isset($this->list)) {
       $this->list = array_values(array_filter($this->list, function($item) {
         return !$item->isEmpty();
@@ -108,7 +123,7 @@ class FieldItemList extends ItemList implements FieldItemListInterface {
   }
 
   /**
-   * Overrides \Drupal\Core\TypedData\ItemList::setValue().
+   * {@inheritdoc}
    */
   public function setValue($values, $notify = TRUE) {
     if (!isset($values) || $values === array()) {
@@ -147,58 +162,37 @@ class FieldItemList extends ItemList implements FieldItemListInterface {
   /**
    * {@inheritdoc}
    */
-  public function getPropertyDefinition($name) {
-    return $this->offsetGet(0)->getPropertyDefinition($name);
-  }
-
-  /**
-   * {@inheritdoc}
-   */
-  public function getPropertyDefinitions() {
-    return $this->offsetGet(0)->getPropertyDefinitions();
-  }
-
-  /**
-   * {@inheritdoc}
-   */
   public function __get($property_name) {
-    return $this->offsetGet(0)->__get($property_name);
-  }
-
-  /**
-   * {@inheritdoc}
-   */
-  public function get($property_name) {
-    return $this->offsetGet(0)->get($property_name);
+    return $this->first()->__get($property_name);
   }
 
   /**
    * {@inheritdoc}
    */
   public function __set($property_name, $value) {
-    $this->offsetGet(0)->__set($property_name, $value);
+    $this->first()->__set($property_name, $value);
   }
 
   /**
    * {@inheritdoc}
    */
   public function __isset($property_name) {
-    return $this->offsetGet(0)->__isset($property_name);
+    return $this->first()->__isset($property_name);
   }
 
   /**
    * {@inheritdoc}
    */
   public function __unset($property_name) {
-    return $this->offsetGet(0)->__unset($property_name);
+    return $this->first()->__unset($property_name);
   }
 
   /**
    * {@inheritdoc}
    */
-  public function access($operation = 'view', AccountInterface $account = NULL) {
-    $access_controller = \Drupal::entityManager()->getAccessController($this->getParent()->entityType());
-    return $access_controller->fieldAccess($operation, $this->getFieldDefinition(), $account, $this);
+  public function access($operation = 'view', AccountInterface $account = NULL, $return_as_object = FALSE) {
+    $access_control_handler = \Drupal::entityManager()->getAccessControlHandler($this->getEntity()->getEntityTypeId());
+    return $access_control_handler->fieldAccess($operation, $this->getFieldDefinition(), $account, $this, $return_as_object);
   }
 
   /**
@@ -206,22 +200,20 @@ class FieldItemList extends ItemList implements FieldItemListInterface {
    */
   public function defaultAccess($operation = 'view', AccountInterface $account = NULL) {
     // Grant access per default.
-    return TRUE;
+    return AccessResult::allowed();
   }
 
   /**
    * {@inheritdoc}
    */
   public function applyDefaultValue($notify = TRUE) {
-    // @todo Remove getDefaultValue() and directly call
-    // FieldDefinition::getFieldDefaultValue() here, once
-    // https://drupal.org/node/2047229 is fixed.
-    $value = $this->getDefaultValue();
+    $value = $this->getFieldDefinition()->getDefaultValue($this->getEntity());
+
     // NULL or array() mean "no default value", but  0, '0' and the empty string
     // are valid default values.
     if (!isset($value) || (is_array($value) && empty($value))) {
       // Create one field item and apply defaults.
-      $this->offsetGet(0)->applyDefaultValue(FALSE);
+      $this->first()->applyDefaultValue(FALSE);
     }
     else {
       $this->setValue($value, $notify);
@@ -230,40 +222,13 @@ class FieldItemList extends ItemList implements FieldItemListInterface {
   }
 
   /**
-   * Returns the default value for the field.
-   *
-   * @return array
-   *   The default value for the field.
-   */
-  protected function getDefaultValue() {
-    if (isset($this->definition['settings']['default_value'])) {
-      return $this->definition['settings']['default_value'];
-    }
-  }
-
-  /**
-   * {@inheritdoc}
-   */
-  public function getConstraints() {
-    // Constraints usually apply to the field item, but required does make
-    // sense on the field only. So we special-case it to apply to the field for
-    // now.
-    // @todo: Separate list and list item definitions to separate constraints.
-    $constraints = array();
-    if (!empty($this->definition['required'])) {
-      $constraints[] = \Drupal::typedData()->getValidationConstraintManager()->create('NotNull', array());
-    }
-    return $constraints;
-  }
-
-  /**
    * {@inheritdoc}
    */
   public function preSave() {
     // Filter out empty items.
-    $this->filterEmptyValues();
+    $this->filterEmptyItems();
 
-    $this->delegateMethod('presave');
+    $this->delegateMethod('preSave');
   }
 
   /**
@@ -306,6 +271,125 @@ class FieldItemList extends ItemList implements FieldItemListInterface {
         $item->{$method}();
       }
     }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function view($display_options = array()) {
+    $view_builder = \Drupal::entityManager()->getViewBuilder($this->getEntity()->getEntityTypeId());
+    return $view_builder->viewField($this, $display_options);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+   public function generateSampleItems($count = 1) {
+    $field_definition = $this->getFieldDefinition();
+    $field_type_class = \Drupal::service('plugin.manager.field.field_type')->getPluginClass($field_definition->getType());
+    for ($delta = 0; $delta < $count; $delta++) {
+      $values[$delta] = $field_type_class::generateSampleValue($field_definition);
+    }
+    $this->setValue($values);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getConstraints() {
+    $constraints = parent::getConstraints();
+    // Check that the number of values doesn't exceed the field cardinality. For
+    // form submitted values, this can only happen with 'multiple value'
+    // widgets.
+    $cardinality = $this->getFieldDefinition()->getFieldStorageDefinition()->getCardinality();
+    if ($cardinality != FieldStorageDefinitionInterface::CARDINALITY_UNLIMITED) {
+      $constraints[] = \Drupal::typedDataManager()
+        ->getValidationConstraintManager()
+        ->create('Count', array(
+          'max' => $cardinality,
+          'maxMessage' => t('%name: this field cannot hold more than @count values.', array('%name' => $this->getFieldDefinition()->getLabel(), '@count' => $cardinality)),
+        ));
+    }
+
+    return $constraints;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function defaultValuesForm(array &$form, FormStateInterface $form_state) {
+    if (empty($this->getFieldDefinition()->default_value_callback)) {
+      // Place the input in a separate place in the submitted values tree.
+      $widget = $this->defaultValueWidget($form_state);
+
+      $element = array('#parents' => array('default_value_input'));
+      $element += $widget->form($this, $element, $form_state);
+
+      return $element;
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function defaultValuesFormValidate(array $element, array &$form, FormStateInterface $form_state) {
+    // Extract the submitted value, and validate it.
+    $widget = $this->defaultValueWidget($form_state);
+    $widget->extractFormValues($this, $element, $form_state);
+    $violations = $this->validate();
+
+    // Assign reported errors to the correct form element.
+    if (count($violations)) {
+      $widget->flagErrors($this, $violations, $element, $form_state);
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function defaultValuesFormSubmit(array $element, array &$form, FormStateInterface $form_state) {
+    // Extract the submitted value, and return it as an array.
+    $widget = $this->defaultValueWidget($form_state);
+    $widget->extractFormValues($this, $element, $form_state);
+    return $this->getValue();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function processDefaultValue($default_value, ContentEntityInterface $entity, FieldDefinitionInterface $definition) {
+    return $default_value;
+  }
+
+  /**
+   * Returns the widget object used in default value form.
+   *
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The form state of the (entire) configuration form.
+   *
+   * @return \Drupal\Core\Field\WidgetInterface
+   *   A Widget object.
+   */
+  protected function defaultValueWidget(FormStateInterface $form_state) {
+    if (!$form_state->has('default_value_widget')) {
+      $entity = $this->getEntity();
+
+      // Force a non-required widget.
+      $this->getFieldDefinition()->required = FALSE;
+      $this->getFieldDefinition()->description = '';
+
+      // Use the widget currently configured for the 'default' form mode, or
+      // fallback to the default widget for the field type.
+      $entity_form_display = entity_get_form_display($entity->getEntityTypeId(), $entity->bundle(), 'default');
+      $widget = $entity_form_display->getRenderer($this->getFieldDefinition()->getName());
+      if (!$widget) {
+        $widget = \Drupal::service('plugin.manager.field.widget')->getInstance(array('field_definition' => $this->getFieldDefinition()));
+      }
+
+      $form_state->set('default_value_widget', $widget);
+    }
+
+    return $form_state->get('default_value_widget');
   }
 
 }

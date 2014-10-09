@@ -29,7 +29,7 @@ display:
           label: ''
           link_to_user: '1'
           overwrite_anonymous: '0'
-          table: users
+          table: users_field_data
           plugin_id: user_name
           provider: user
       pager:
@@ -45,7 +45,7 @@ display:
     display_plugin: default
     display_title: Master
     id: default
-    position: '0'
+    position: 0
 label: test_views_handler_field_user_name
 id: test_views_handler_field_user_name
 tag: default

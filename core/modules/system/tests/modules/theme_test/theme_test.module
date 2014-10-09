@@ -1,5 +1,7 @@
 <?php
 
+use Drupal\Core\Extension\Extension;
+
 /**
  * Implements hook_theme().
  */
@@ -26,7 +28,14 @@ function theme_test_theme($existing, $type, $theme, $path) {
     'template' => 'theme-test-suggestions',
     'variables' => array(),
   );
+  $items['theme_test_general_suggestions'] = array(
+    'template' => 'theme-test-general-suggestions',
+    'variables' => array(),
+  );
   $items['theme_test_function_suggestions'] = array(
+    'variables' => array(),
+  );
+  $items['theme_test_suggestions_include'] = array(
     'variables' => array(),
   );
   $items['theme_test_foo'] = array(
@@ -42,53 +51,10 @@ function theme_test_theme($existing, $type, $theme, $path) {
   $items['theme_test_function_template_override'] = array(
     'variables' => array(),
   );
-  return $items;
-}
-
-/**
- * Implements hook_system_theme_info().
- */
-function theme_test_system_theme_info() {
-  $themes['test_theme'] = drupal_get_path('module', 'system') . '/tests/themes/test_theme/test_theme.info.yml';
-  $themes['test_basetheme'] = drupal_get_path('module', 'system') . '/tests/themes/test_basetheme/test_basetheme.info.yml';
-  $themes['test_subtheme'] = drupal_get_path('module', 'system') . '/tests/themes/test_subtheme/test_subtheme.info.yml';
-  $themes['test_theme_phptemplate'] = drupal_get_path('module', 'system') . '/tests/themes/test_theme_phptemplate/test_theme_phptemplate.info.yml';
-  return $themes;
-}
-
-/**
- * Implements hook_menu().
- */
-function theme_test_menu() {
-  $items['theme-test/suggestion'] = array(
-    'route_name' => 'theme_test.suggestion',
-    'theme callback' => '_theme_custom_theme',
-    'type' => MENU_CALLBACK,
-  );
-  $items['theme-test/alter'] = array(
-    'theme callback' => '_theme_custom_theme',
-    'route_name' => 'theme_test.alter',
-    'type' => MENU_CALLBACK,
-  );
-  $items['theme-test/function-template-overridden'] = array(
-    'theme callback' => '_theme_custom_theme',
-    'route_name' => 'theme_test.function_template_override',
+  $info['test_theme_not_existing_function'] = array(
+    'function' => 'test_theme_not_existing_function',
   );
   return $items;
-}
-/**
- * Fake registry loading callback.
- */
-function _theme_test_load_registry() {
-  print 'registry initialized';
-  return array();
-}
-
-/**
- * Custom theme callback.
- */
-function _theme_custom_theme() {
-  return 'test_theme';
 }
 
 /**
@@ -98,10 +64,7 @@ function theme_test_preprocess_html(&$variables) {
   $variables['html_attributes']['theme_test_html_attribute'] = 'theme test html attribute value';
   $variables['attributes']['theme_test_body_attribute'] = 'theme test body attribute value';
 
-  // Check that the page variable is not flattened yet.
-  if (is_array($variables['page'])) {
-    $variables['attributes']['theme_test_page_variable'] = 'Page variable is an array.';
-  }
+  $variables['attributes']['theme_test_page_variable'] = 'Page variable is an array.';
 }
 
 /**
@@ -112,14 +75,14 @@ function theme_test_page_alter(&$page) {
 }
 
 /**
- * Theme function for testing theme('theme_test_foo').
+ * Theme function for testing _theme('theme_test_foo').
  */
 function theme_theme_test_foo($variables) {
   return $variables['foo'];
 }
 
 /**
- * Theme function for testing theme('theme_test_function_template_override').
+ * Theme function for testing _theme('theme_test_function_template_override').
  */
 function theme_theme_test_function_template_override($variables) {
   return 'theme_test_function_template_override test failed.';
@@ -142,8 +105,8 @@ function template_preprocess_theme_test_render_element(&$variables) {
  * Theme function for testing rendering of child elements via drupal_render().
  *
  * Theme hooks defining a 'render element' add an internal '#render_children'
- * property. When this property is found, drupal_render() avoids calling theme()
- * on the top-level element to prevent infinite recursion.
+ * property. When this property is found, drupal_render() avoids calling
+ * _theme() on the top-level element to prevent infinite recursion.
  *
  * @param array $variables
  *   An associative array containing:
@@ -165,4 +128,38 @@ function theme_theme_test_function_suggestions($variables) {
  */
 function theme_test_theme_suggestions_theme_test_suggestion_provided(array $variables) {
   return array('theme_test_suggestion_provided__' . 'foo');
+}
+
+/**
+ * Implements hook_theme_suggestions_alter().
+ */
+function theme_test_theme_suggestions_alter(array &$suggestions, array $variables, $hook) {
+  drupal_set_message(__FUNCTION__ . '() executed.');
+}
+
+/**
+ * Implements hook_theme_suggestions_HOOK_alter().
+ */
+function theme_test_theme_suggestions_theme_test_suggestions_alter(array &$suggestions, array $variables) {
+  drupal_set_message(__FUNCTION__ . '() executed.');
+}
+
+/**
+ * Returns HTML for a theme function include test.
+ */
+function theme_theme_test_suggestions_include($variables) {
+  return 'Original function before altering theme suggestions.';
+}
+
+/**
+ * Implements hook_system_info_alter().
+ *
+ * @see \Drupal\system\Tests\Theme\ThemeInfoTest::testChanges()
+ */
+function theme_test_system_info_alter(array &$info, Extension $file, $type) {
+  if ($type == 'theme' && $file->getName() == 'test_theme' && \Drupal::state()->get('theme_test.modify_info_files')) {
+    // Add a library to see if the system picks it up.
+    $info += ['libraries' => []];
+    $info['libraries'][] = 'core/backbone';
+  }
 }

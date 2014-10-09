@@ -15,7 +15,7 @@ interface TranslatableInterface {
   /**
    * Returns the default language.
    *
-   * @return \Drupal\Core\Language\Language
+   * @return \Drupal\Core\Language\LanguageInterface
    *   The language object.
    */
   public function language();
@@ -27,33 +27,32 @@ interface TranslatableInterface {
    *   (optional) Whether the default language should be included. Defaults to
    *   TRUE.
    *
-   * @return
-   *   An array of language objects, keyed by language codes.
+   * @return \Drupal\Core\Language\LanguageInterface[]
+   *   An associative array of language objects, keyed by language codes.
    */
   public function getTranslationLanguages($include_default = TRUE);
 
   /**
    * Gets a translation of the data.
    *
-   * The returned translation has to be implement the same typed data interfaces
-   * as this typed data object, excluding the TranslatableInterface. E.g., if
-   * this typed data object implements the ComplexDataInterface and
-   * AccessibleInterface, the translation object has to implement both as well.
+   * The returned translation has to be of the same type than this typed data
+   * object. If the specified translation does not exist, a new one will be
+   * instantiated.
    *
    * @param $langcode
-   *   The language code of the translation to get or Language::LANGCODE_DEFAULT
+   *   The language code of the translation to get or
+   *   LanguageInterface::LANGCODE_DEFAULT
    *   to get the data in default language.
    *
-   * @return \Drupal\Core\TypedData\TypedDataInterface
+   * @return $this
    *   A typed data object for the translated data.
    */
   public function getTranslation($langcode);
 
-
   /**
    * Returns the translatable object referring to the original language.
    *
-   * @return \Drupal\Core\TypedData\TranslatableInterface
+   * @return $this
    *   The translation object referring to the original language.
    */
   public function getUntranslated();
@@ -62,11 +61,11 @@ interface TranslatableInterface {
    * Returns TRUE there is a translation for the given language code.
    *
    * @param string $langcode
-   *   The language code identifiying the translation.
+   *   The language code identifying the translation.
    *
    * @return bool
    *   TRUE if the translation exists, FALSE otherwise.
-  */
+   */
   public function hasTranslation($langcode);
 
   /**
@@ -78,7 +77,7 @@ interface TranslatableInterface {
    *   (optional) An array of initial values to be assigned to the translatable
    *   fields. Defaults to none.
    *
-   * @return \Drupal\Core\TypedData\TranslatableInterface
+   * @return $this
    */
   public function addTranslation($langcode, array $values = array());
 

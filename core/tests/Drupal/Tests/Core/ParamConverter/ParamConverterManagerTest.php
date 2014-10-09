@@ -10,48 +10,27 @@ namespace Drupal\Tests\Core\ParamConverter;
 use Drupal\Core\ParamConverter\ParamConverterManager;
 use Drupal\Tests\UnitTestCase;
 use Symfony\Cmf\Component\Routing\RouteObjectInterface;
-use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Route;
+use Symfony\Component\Routing\RouteCollection;
 
 /**
- * Tests the typed data resolver manager.
+ * @coversDefaultClass \Drupal\Core\ParamConverter\ParamConverterManager
+ * @group ParamConverter
  */
 class ParamConverterManagerTest extends UnitTestCase {
 
-  public static function getInfo() {
-    return array(
-      'name' => 'Parameter converter manager',
-      'description' => 'Tests the parameter converter manager.',
-      'group' => 'Routing',
-    );
-  }
-
-  public function setUp() {
-    parent::setUp();
-
-    $this->container = new ContainerBuilder();
-    $this->manager = new ParamConverterManager();
-    $this->manager->setContainer($this->container);
-  }
+  /**
+   * @var \Drupal\Core\ParamConverter\ParamConverterManager
+   */
+  protected $manager;
 
   /**
-   * Tests \Drupal\Core\ParamConverter\ParamConverterManager::addConverter().
-   *
-   * @dataProvider providerTestAddConverter
-   *
-   * @see ParamConverterManagerTest::providerTestAddConverter().
+   * {@inheritdoc}
    */
-  public function testAddConverter($unsorted, $sorted) {
-    foreach ($unsorted as $data) {
-      $this->manager->addConverter($data['name'], $data['priority']);
-    }
+  protected function setUp() {
+    parent::setUp();
 
-    // Test that ResolverManager::getTypedDataResolvers() returns the resolvers
-    // in the expected order.
-    foreach ($this->manager->getConverterIds() as $key => $converter) {
-      $this->assertEquals($sorted[$key], $converter);
-    }
+    $this->manager = new ParamConverterManager();
   }
 
   /**
@@ -59,23 +38,26 @@ class ParamConverterManagerTest extends UnitTestCase {
    *
    * @dataProvider providerTestGetConverter
    *
-   * @see ParamConverterManagerTest::providerTestGetConverter().
+   * @covers ::getConverter()
    */
-  public function testGetConverter($name, $priority, $class) {
+  public function testGetConverter($name, $class) {
     $converter = $this->getMockBuilder('Drupal\Core\ParamConverter\ParamConverterInterface')
       ->setMockClassName($class)
       ->getMock();
 
-    $this->manager->addConverter($name, $priority);
-    $this->container->set($name, $converter);
+    $this->manager->addConverter($converter, $name);
 
+    $this->assertInstanceOf($class, $this->manager->getConverter($name));
+    // Assert that a second call to getConverter() does not use the container.
     $this->assertInstanceOf($class, $this->manager->getConverter($name));
   }
 
   /**
    * Tests \Drupal\Core\ParamConverter\ParamConverterManager::getConverter().
    *
-   * @expectedException InvalidArgumentException
+   * @covers ::getConverter()
+   *
+   * @expectedException \InvalidArgumentException
    */
   public function testGetConverterException() {
     $this->manager->getConverter('undefined.converter');
@@ -92,13 +74,13 @@ class ParamConverterManagerTest extends UnitTestCase {
    */
   public function providerTestAddConverter() {
     $converters[0]['unsorted'] = array(
-      array('name' => 'raspberry', 'priority' => 10),
-      array('name' => 'pear', 'priority' => 5),
-      array('name' => 'strawberry', 'priority' => 20),
-      array('name' => 'pineapple', 'priority' => 0),
-      array('name' => 'banana', 'priority' => -10),
-      array('name' => 'apple', 'priority' => -10),
-      array('name' => 'peach', 'priority' => 5),
+      array('name' => 'strawberry'),
+      array('name' => 'raspberry'),
+      array('name' => 'pear'),
+      array('name' => 'peach'),
+      array('name' => 'pineapple'),
+      array('name' => 'banana'),
+      array('name' => 'apple'),
     );
 
     $converters[0]['sorted'] = array(
@@ -107,13 +89,13 @@ class ParamConverterManagerTest extends UnitTestCase {
     );
 
     $converters[1]['unsorted'] = array(
-      array('name' => 'ape', 'priority' => 0),
-      array('name' => 'cat', 'priority' => -5),
-      array('name' => 'puppy', 'priority' => -10),
-      array('name' => 'llama', 'priority' => -15),
-      array('name' => 'giraffe', 'priority' => 10),
-      array('name' => 'zebra', 'priority' => 10),
-      array('name' => 'eagle', 'priority' => 5),
+      array('name' => 'giraffe'),
+      array('name' => 'zebra'),
+      array('name' => 'eagle'),
+      array('name' => 'ape'),
+      array('name' => 'cat'),
+      array('name' => 'puppy'),
+      array('name' => 'llama'),
     );
 
     $converters[1]['sorted'] = array(
@@ -135,59 +117,141 @@ class ParamConverterManagerTest extends UnitTestCase {
    */
   public function providerTestGetConverter() {
     return array(
-      array('ape', 0, 'ApeConverterClass'),
-      array('cat', -5, 'CatConverterClass'),
-      array('puppy', -10, 'PuppyConverterClass'),
-      array('llama', -15, 'LlamaConverterClass'),
-      array('giraffe', 10, 'GiraffeConverterClass'),
-      array('zebra', 10, 'ZebraConverterClass'),
-      array('eagle', 5, 'EagleConverterClass'),
+      array('ape', 'ApeConverterClass'),
+      array('cat', 'CatConverterClass'),
+      array('puppy', 'PuppyConverterClass'),
+      array('llama', 'LlamaConverterClass'),
+      array('giraffe', 'GiraffeConverterClass'),
+      array('zebra', 'ZebraConverterClass'),
+      array('eagle', 'EagleConverterClass'),
     );
   }
 
   /**
-   * Tests the enhance method.
+   * @covers ::setRouteParameterConverters()
    *
-   * @see \Drupal\Core\ParamConverter\ParamConverterManager::enhance().
+   * @dataProvider providerTestSetRouteParameterConverters
    */
-  public function testEnhance() {
-    // Create a mock route using a mock parameter converter.
+  public function testSetRouteParameterConverters($path, $parameters = NULL, $expected = NULL) {
     $converter = $this->getMock('Drupal\Core\ParamConverter\ParamConverterInterface');
-    $this->manager->addConverter('test_convert');
+    $converter->expects($this->any())
+      ->method('applies')
+      ->with($this->anything(), 'id', $this->anything())
+      ->will($this->returnValue(TRUE));
+    $this->manager->addConverter($converter, 'applied');
 
-    $this->container->set('test_convert', $converter);
+    $route = new Route($path);
+    if ($parameters) {
+      $route->setOption('parameters', $parameters);
+    }
+    $collection = new RouteCollection();
+    $collection->add('test_route', $route);
 
-    $route = new Route('/test/{id}');
-    $parameters = array();
-    $parameters['id'] = array(
-      'converter' => 'test_convert'
+    $this->manager->setRouteParameterConverters($collection);
+    foreach ($collection as $route) {
+      $result = $route->getOption('parameters');
+      if ($expected) {
+        $this->assertSame($expected, $result['id']['converter']);
+      }
+      else {
+        $this->assertNull($result);
+      }
+    }
+  }
+
+  /**
+   * Provides data for testSetRouteParameterConverters().
+   */
+  public function providerTestSetRouteParameterConverters() {
+    return array(
+      array('/test'),
+      array('/test/{id}', array('id' => array()), 'applied'),
+      array('/test/{id}', array('id' => array('converter' => 'predefined')), 'predefined'),
+    );
+  }
+
+  /**
+   * @covers ::convert()
+   */
+  public function testConvert() {
+    $route = new Route('/test/{id}/{literal}/{null}');
+    $parameters = array(
+      'id' => array(
+        'converter' => 'test_convert',
+      ),
+      'literal' => array(),
+      'null' => array(),
     );
     $route->setOption('parameters', $parameters);
 
-    $defaults = array();
-    $defaults[RouteObjectInterface::ROUTE_OBJECT] = $route;
-    $defaults['id'] = 1;
-    $defaults['_entity'] = &$defaults['id'];
+    $defaults = array(
+      RouteObjectInterface::ROUTE_OBJECT => $route,
+      RouteObjectInterface::ROUTE_NAME => 'test_route',
+      'id' => 1,
+      'literal' => 'this is a literal',
+      'null' => NULL,
+    );
 
-    $request = new Request();
+    $expected = $defaults;
+    $expected['id'] = 'something_better!';
 
-    $entity = $this->getMockBuilder('\Drupal\user\Entity\User')
-      ->disableOriginalConstructor()
-      ->getMock();
-
-    $converter->expects($this->once())
+    $converter = $this->getMock('Drupal\Core\ParamConverter\ParamConverterInterface');
+    $converter->expects($this->any())
       ->method('convert')
-      ->with($this->equalTo(1))
-      ->will($this->returnValue($entity));
+      ->with(1, $this->isType('array'), 'id', $this->isType('array'))
+      ->will($this->returnValue('something_better!'));
+    $this->manager->addConverter($converter, 'test_convert');
 
-    $defaults = $this->manager->enhance($defaults, $request);
+    $result = $this->manager->convert($defaults);
 
-    // The value of 1 should be upcast to the User object for UID 1.
-    $this->assertSame($entity, $defaults['id']);
-    // The parameter for the user ID should be stored in the raw variables.
-    $this->assertTrue($defaults['_raw_variables']->has('id'));
-    // The raw non-upcasted value for the user should be the UID.
-    $this->assertEquals(1, $defaults['_raw_variables']->get('id'));
+    $this->assertEquals($expected, $result);
+  }
+
+  /**
+   * @covers ::convert()
+   */
+  public function testConvertNoConverting() {
+    $route = new Route('/test');
+    $defaults = array(
+      RouteObjectInterface::ROUTE_OBJECT => $route,
+      RouteObjectInterface::ROUTE_NAME => 'test_route',
+    );
+
+    $expected = $defaults;
+
+    $result = $this->manager->convert($defaults);
+    $this->assertEquals($expected, $result);
+  }
+
+  /**
+   * @covers ::convert()
+   *
+   * @expectedException \Drupal\Core\ParamConverter\ParamNotConvertedException
+   * @expectedExceptionMessage The "id" parameter was not converted for the path "/test/{id}" (route name: "test_route")
+   */
+  public function testConvertMissingParam() {
+    $route = new Route('/test/{id}');
+    $parameters = array(
+      'id' => array(
+        'converter' => 'test_convert',
+      ),
+    );
+    $route->setOption('parameters', $parameters);
+
+    $defaults = array(
+      RouteObjectInterface::ROUTE_OBJECT => $route,
+      RouteObjectInterface::ROUTE_NAME => 'test_route',
+      'id' => 1,
+    );
+
+    $converter = $this->getMock('Drupal\Core\ParamConverter\ParamConverterInterface');
+    $converter->expects($this->any())
+      ->method('convert')
+      ->with(1, $this->isType('array'), 'id', $this->isType('array'))
+      ->will($this->returnValue(NULL));
+    $this->manager->addConverter($converter, 'test_convert');
+
+    $this->manager->convert($defaults);
   }
 
 }

@@ -18,6 +18,10 @@ namespace Drupal\Core\TypedData;
  *
  * When implementing this interface which extends Traversable, make sure to list
  * IteratorAggregate or Iterator before this interface in the implements clause.
+ *
+ * @see \Drupal\Core\TypedData\ComplexDataDefinitionInterface
+ *
+ * @ingroup typed_data
  */
 interface ComplexDataInterface extends \Traversable, TypedDataInterface  {
 
@@ -27,11 +31,13 @@ interface ComplexDataInterface extends \Traversable, TypedDataInterface  {
    * @param $property_name
    *   The name of the property to get; e.g., 'title' or 'name'.
    *
-   * @throws \InvalidArgumentException
-   *   If an invalid property name is given.
-   *
    * @return \Drupal\Core\TypedData\TypedDataInterface
    *   The property object.
+   *
+   * @throws \InvalidArgumentException
+   *   If an invalid property name is given.
+   * @throws \Drupal\Core\TypedData\Exception\MissingDataException
+   *   If the complex data structure is unset and no property can be created.
    */
   public function get($property_name);
 
@@ -47,11 +53,13 @@ interface ComplexDataInterface extends \Traversable, TypedDataInterface  {
    *   TRUE. If the update stems from a parent object, set it to FALSE to avoid
    *   being notified again.
    *
-   * @throws \InvalidArgumentException
-   *   If the specified property does not exist.
-   *
    * @return \Drupal\Core\TypedData\TypedDataInterface
    *   The property object.
+   *
+   * @throws \InvalidArgumentException
+   *   If the specified property does not exist.
+   * @throws \Drupal\Core\TypedData\Exception\MissingDataException
+   *   If the complex data structure is unset and no property can be set.
    */
   public function set($property_name, $value, $notify = TRUE);
 
@@ -61,59 +69,28 @@ interface ComplexDataInterface extends \Traversable, TypedDataInterface  {
    * @param bool $include_computed
    *   If set to TRUE, computed properties are included. Defaults to FALSE.
    *
-   * @return array
+   * @return \Drupal\Core\TypedData\TypedDataInterface[]
    *   An array of property objects implementing the TypedDataInterface, keyed
    *   by property name.
+   *
+   * @throws \Drupal\Core\TypedData\Exception\MissingDataException
+   *   If the complex data structure is unset and no property can be created.
    */
   public function getProperties($include_computed = FALSE);
 
   /**
-   * Gets an array of property values.
+   * Returns an array of all property values.
    *
    * Gets an array of plain property values including all not-computed
    * properties.
    *
    * @return array
-   *   An array keyed by property name containing the property value.
+   *   An array of property values, keyed by property name.
+   *
+   * @throws \Drupal\Core\TypedData\Exception\MissingDataException
+   *   If the complex data structure is unset and no property can be created.
    */
-  public function getPropertyValues();
-
-  /**
-   * Sets multiple property values.
-   *
-   * @param array
-   *   The array of property values to set, keyed by property name.
-   *
-   * @throws \InvalidArgumentException
-   *   If the value of a not existing property is to be set.
-   * @throws \Drupal\Core\TypedData\ReadOnlyException
-   *   If a read-only property is set.
-   */
-  public function setPropertyValues($values);
-
-  /**
-   * Gets the definition of a contained property.
-   *
-   * @param string $name
-   *   The name of property.
-   *
-   * @return array|FALSE
-   *   The definition of the property or FALSE if the property does not exist.
-   */
-  public function getPropertyDefinition($name);
-
-  /**
-   * Gets an array of property definitions of contained properties.
-   *
-   * @param array $definition
-   *   The definition of the container's property, e.g. the definition of an
-   *   entity reference property.
-   *
-   * @return array
-   *   An array of property definitions of contained properties, keyed by
-   *   property name.
-   */
-  public function getPropertyDefinitions();
+  public function toArray();
 
   /**
    * Determines whether the data structure is empty.

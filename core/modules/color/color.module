@@ -5,20 +5,27 @@
  */
 
 use Drupal\Core\Asset\CssOptimizer;
+use Drupal\Component\Utility\Bytes;
+use Drupal\Component\Utility\Environment;
+use Drupal\Component\Utility\SafeMarkup;
+use Drupal\Component\Utility\String;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Render\Element\Textfield;
+use Drupal\Core\Routing\RouteMatchInterface;
 
 /**
  * Implements hook_help().
  */
-function color_help($path, $arg) {
-  switch ($path) {
-    case 'admin/help#color':
+function color_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    case 'help.page.color':
       $output = '<h3>' . t('About') . '</h3>';
-      $output .= '<p>' . t('The Color module allows users with the <em>Administer site configuration</em> permission to quickly and easily change the color scheme of themes that have been built to be compatible with it. For more information, see the online handbook entry for <a href="@color">Color module</a>.', array('@color' => 'http://drupal.org/documentation/modules/color')) . '</p>';
+      $output .= '<p>' . t('The Color module allows users with the <em>Administer site configuration</em> permission to change the color scheme (color of links, backgrounds, text, and other theme elements) of themes that are compatible with it. For more information, see <a href="!color_do">the online documentation for the Color module</a>.', array('!color_do' => 'https://drupal.org/documentation/modules/color')) . '</p>';
       $output .= '<h3>' . t('Uses') . '</h3>';
       $output .= '<dl>';
       $output .= '<dt>' . t('Changing colors') . '</dt>';
-      $output .= '<dd>' . t("Using the Color module allows you to easily change the color of links, backgrounds, text, and other theme elements. To change the color settings for a compatible theme, select the <em>Settings</em> link for your theme on the <a href='@configure'>Themes administration page</a>. If you don't see a color picker on that page, then your theme is not compatible with the color module. If you are sure that the theme does indeed support the color module, but the color picker does not appear, then <a href='@troubleshoot'>follow these troubleshooting procedures</a>.", array('@configure' => url('admin/appearance'), '@troubleshoot' => 'http://drupal.org/node/109457')) . '</dd>';
-      $output .= '<dd>' . t("The Color module saves a modified copy of the theme's specified stylesheets in the files directory. This means that if you make any manual changes to your theme's stylesheet, <em>you must save your color settings again, even if they haven't changed</em>. This step is required because the module stylesheets (in the files directory) need to be recreated to include your changes.") . '</dd>';
+      $output .= '<dd><p>' . t('To change the color settings, select the <em>Settings</em> link for your theme on the <a href="!appearance">Appearance</a> page. If the color picker does not appear than the theme is not compatible with the Color module.', array('!appearance' => \Drupal::url('system.themes_page'))) . '</p>';
+      $output .= '<p>' . t('The Color module saves a modified copy of the theme\'s specified stylesheets in the files directory. This means that if you make any manual changes to your theme\'s stylesheet, <em>you must save your color settings again, even if they haven\'t changed</em>. This step is required because the module stylesheets (in the files directory) need to be recreated to include your changes.') . '</p></dd>';
       $output .= '</dl>';
       return $output;
   }
@@ -39,11 +46,13 @@ function color_theme() {
 /**
  * Implements hook_form_FORM_ID_alter().
  */
-function color_form_system_theme_settings_alter(&$form, &$form_state) {
-  if (isset($form_state['build_info']['args'][0]) && ($theme = $form_state['build_info']['args'][0]) && color_get_info($theme) && function_exists('gd_info')) {
+function color_form_system_theme_settings_alter(&$form, FormStateInterface $form_state) {
+  $build_info = $form_state->getBuildInfo();
+  if (isset($build_info['args'][0]) && ($theme = $build_info['args'][0]) && color_get_info($theme) && function_exists('gd_info')) {
     $form['color'] = array(
       '#type' => 'details',
       '#title' => t('Color scheme'),
+      '#open' => TRUE,
       '#weight' => -1,
       '#attributes' => array('id' => 'color_scheme_form'),
       '#theme' => 'color_scheme_form',
@@ -60,11 +69,11 @@ function color_form_system_theme_settings_alter(&$form, &$form_state) {
  * Replaces style sheets with color-altered style sheets.
  */
 function color_css_alter(&$css) {
-  global $theme_key;
+  $theme_key = \Drupal::theme()->getActiveTheme()->getName();
   $themes = list_themes();
 
   // Override stylesheets.
-  $color_paths = \Drupal::config('color.' . $theme_key)->get('stylesheets');
+  $color_paths = \Drupal::config('color.theme.' . $theme_key)->get('stylesheets');
 
   if (!empty($color_paths) && !empty($themes[$theme_key]->stylesheets['all'])) {
 
@@ -85,15 +94,45 @@ function color_css_alter(&$css) {
 }
 
 /**
+ * Implements hook_library_alter().
+ *
+ * Replaces style sheets declared in libraries with color-altered style sheets.
+ */
+function color_library_alter(&$library, $name) {
+  $active_theme = \Drupal::theme()->getActiveTheme();
+  $theme_key = $active_theme->getName();
+  $theme_libraries = $active_theme->getLibraries();
+  if (in_array($name, $theme_libraries)) {
+    // Override stylesheets.
+    $color_paths = \Drupal::config('color.theme.' . $theme_key)->get('stylesheets');
+    if (!empty($color_paths)) {
+      foreach ($library['css'] as &$css) {
+        // Loop over the path array with recolored CSS files to find matching
+        // paths which could replace the non-recolored paths.
+        foreach ($color_paths as $color_path) {
+          // Color module currently requires unique file names to be used,
+          // which allows us to compare different file paths.
+          if (drupal_basename($css['data']) == drupal_basename($color_path)) {
+            // Replace the path to the new css file.
+            // This keeps the order of the stylesheets intact.
+            $css['data'] = $color_path;
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
  * Implements hook_preprocess_page().
  *
  * Replace the logo with the colored version if available.
  */
 function color_preprocess_page(&$variables) {
-  global $theme_key;
+  $theme_key = \Drupal::theme()->getActiveTheme()->getName();
 
   // Override logo.
-  $logo = \Drupal::config('color.' . $theme_key)->get('logo');
+  $logo = \Drupal::config('color.theme.' . $theme_key)->get('logo');
   if ($logo && $variables['logo'] && preg_match('!' . $theme_key . '/logo.png$!', $variables['logo'])) {
     $variables['logo'] = file_create_url($logo);
   }
@@ -113,6 +152,22 @@ function color_get_info($theme) {
   $file = DRUPAL_ROOT . '/' . $path . '/color/color.inc';
   if ($path && file_exists($file)) {
     include $file;
+    // Add in default values.
+    $info += array(
+      // CSS files (excluding @import) to rewrite with new color scheme.
+      'css' => array(),
+      // Files to copy.
+      'copy' => array(),
+      // Gradient definitions.
+      'gradients' => array(),
+      // Color areas to fill (x, y, width, height).
+      'fill' => array(),
+      // Coordinates of all the theme slices (x, y, width, height) with their
+      // filename as used in the stylesheet.
+      'slices' => array(),
+      // Reference color used for blending.
+      'blend_target' => '#ffffff',
+    );
     $theme_info[$theme] = $info;
     return $info;
   }
@@ -132,7 +187,7 @@ function color_get_palette($theme, $default = FALSE) {
 
   // Load variable.
   // @todo Default color config should be moved to yaml in the theme.
-  return \Drupal::config('color.' . $theme)->get('palette') ?: $palette;
+  return \Drupal::config('color.theme.' . $theme)->get('palette') ?: $palette;
 }
 
 /**
@@ -143,9 +198,8 @@ function color_get_palette($theme, $default = FALSE) {
  *
  * @see color_scheme_form_validate()
  * @see color_scheme_form_submit()
- * @ingroup forms
  */
-function color_scheme_form($complete_form, &$form_state, $theme) {
+function color_scheme_form($complete_form, FormStateInterface $form_state, $theme) {
   $base = drupal_get_path('module', 'color');
   $info = color_get_info($theme);
 
@@ -160,7 +214,7 @@ function color_scheme_form($complete_form, &$form_state, $theme) {
 
   // See if we're using a predefined scheme.
   // Note: we use the original theme when the default scheme is chosen.
-  $current_scheme = \Drupal::config('color.' . $theme)->get('palette');
+  $current_scheme = \Drupal::config('color.theme.' . $theme)->get('palette');
   foreach ($schemes as $key => $scheme) {
     if ($current_scheme == $scheme) {
       $scheme_name = $key;
@@ -184,7 +238,7 @@ function color_scheme_form($complete_form, &$form_state, $theme) {
     '#default_value' => $scheme_name,
     '#attached' => array(
       'library' => array(
-        array('color', 'drupal.color'),
+        'color/drupal.color',
       ),
       // Add custom CSS.
       'css' => array(
@@ -214,7 +268,8 @@ function color_scheme_form($complete_form, &$form_state, $theme) {
     if (isset($names[$name])) {
       $form['palette'][$name] = array(
         '#type' => 'textfield',
-        '#title' => check_plain($names[$name]),
+        '#title' => String::checkPlain($names[$name]),
+        '#value_callback' => 'color_palette_color_value',
         '#default_value' => $value,
         '#size' => 8,
         '#attributes' => array('dir' => 'ltr'),
@@ -243,15 +298,64 @@ function template_preprocess_color_scheme_form(&$variables) {
   $info = $form['info']['#value'];
   $path = drupal_get_path('theme', $theme) . '/';
 
-  $preview_css_path = $path . $info['preview_css'];
+  if (isset($info['preview_css'])) {
+    $preview_css_path = $path . $info['preview_css'];
+    $form['scheme']['#attached']['css'][$preview_css_path] = array();
+  }
   $preview_js_path = isset($info['preview_js']) ? $path . $info['preview_js'] : drupal_get_path('module', 'color') . '/' . 'preview.js';
-  $form['scheme']['#attached']['css'][$preview_css_path] = array();
   // Add the JS at a weight below color.js.
   $form['scheme']['#attached']['js'][$preview_js_path] = array('weight' => -1);
 
   // Attempt to load preview HTML if the theme provides it.
   $preview_html_path = DRUPAL_ROOT . '/' . (isset($info['preview_html']) ? drupal_get_path('theme', $theme) . '/' . $info['preview_html'] : drupal_get_path('module', 'color') . '/preview.html');
-  $variables['html_preview'] = file_get_contents($preview_html_path);
+  $variables['html_preview'] = SafeMarkup::set(file_get_contents($preview_html_path));
+}
+
+/**
+ * Determines the value for a palette color field.
+ *
+ * @param array $element
+ *   The form element whose value is being populated.
+ * @param string|bool $input
+ *   The incoming input to populate the form element. If this is FALSE,
+ *   the element's default value should be returned.
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ *   The current state of the form.
+ *
+ * @return string
+ *   The data that will appear in the $form_state->getValues() collection for this
+ *   element. Return nothing to use the default.
+ */
+function color_palette_color_value($element, $input = FALSE, FormStateInterface $form_state) {
+  // If we suspect a possible cross-site request forgery attack, only accept
+  // hexadecimal CSS color strings from user input, to avoid problems when this
+  // value is used in the JavaScript preview.
+  if ($input !== FALSE) {
+    // Start with the provided value for this textfield, and validate that if
+    // necessary, falling back on the default value.
+    $value = Textfield::valueCallback($element, $input, $form_state);
+    $complete_form = $form_state->getCompleteForm();
+    if (!$value || !isset($complete_form['#token']) || color_valid_hexadecimal_string($value) || \Drupal::csrfToken()->validate($form_state->getValue('form_token'), $complete_form['#token'])) {
+      return $value;
+    }
+    else {
+      return $element['#default_value'];
+    }
+  }
+}
+
+/**
+ * Determines if a hexadecimal CSS color string is valid.
+ *
+ * @param string $color
+ *   The string to check.
+ *
+ * @return bool
+ *   TRUE if the string is a valid hexadecimal CSS color string, or FALSE if it
+ *   isn't.
+ */
+function color_valid_hexadecimal_string($color) {
+  return preg_match('/^#([a-f0-9]{3}){1,2}$/iD', $color);
 }
 
 /**
@@ -259,11 +363,11 @@ function template_preprocess_color_scheme_form(&$variables) {
  *
  * @see color_scheme_form_submit()
  */
-function color_scheme_form_validate($form, &$form_state) {
+function color_scheme_form_validate($form, FormStateInterface $form_state) {
   // Only accept hexadecimal CSS color strings to avoid XSS upon use.
-  foreach ($form_state['values']['palette'] as $key => $color) {
-    if (!preg_match('/^#([a-f0-9]{3}){1,2}$/iD', $color)) {
-      form_set_error('palette][' . $key, t('You must enter a valid hexadecimal color value for %name.', array('%name' => $form['color']['palette'][$key]['#title'])));
+  foreach ($form_state->getValue('palette') as $key => $color) {
+    if (!color_valid_hexadecimal_string($color)) {
+      $form_state->setErrorByName('palette][' . $key, t('You must enter a valid hexadecimal color value for %name.', array('%name' => $form['color']['palette'][$key]['#title'])));
     }
   }
 }
@@ -273,46 +377,48 @@ function color_scheme_form_validate($form, &$form_state) {
  *
  * @see color_scheme_form_validate()
  */
-function color_scheme_form_submit($form, &$form_state) {
+function color_scheme_form_submit($form, FormStateInterface $form_state) {
 
   // Get theme coloring info.
-  if (!isset($form_state['values']['info'])) {
+  if (!$form_state->hasValue('info')) {
     return;
   }
-  $theme = $form_state['values']['theme'];
-  $info = $form_state['values']['info'];
+  $theme = $form_state->getValue('theme');
+  $info = $form_state->getValue('info');
 
-  $config = \Drupal::config('color.' . $theme);
+  $config = \Drupal::config('color.theme.' . $theme);
 
   // Resolve palette.
-  $palette = $form_state['values']['palette'];
-  if ($form_state['values']['scheme'] != '') {
+  $palette = $form_state->getValue('palette');
+  if ($form_state->getValue('scheme') != '') {
     foreach ($palette as $key => $color) {
-      if (isset($info['schemes'][$form_state['values']['scheme']]['colors'][$key])) {
-        $palette[$key] = $info['schemes'][$form_state['values']['scheme']]['colors'][$key];
+      if (isset($info['schemes'][$form_state->getValue('scheme')]['colors'][$key])) {
+        $palette[$key] = $info['schemes'][$form_state->getValue('scheme')]['colors'][$key];
       }
     }
     $palette += $info['schemes']['default']['colors'];
   }
 
   // Make sure enough memory is available.
-  // Fetch source image dimensions.
-  $source = drupal_get_path('theme', $theme) . '/' . $info['base_image'];
-  list($width, $height) = getimagesize($source);
+  if (isset($info['base_image'])) {
+    // Fetch source image dimensions.
+    $source = drupal_get_path('theme', $theme) . '/' . $info['base_image'];
+    list($width, $height) = getimagesize($source);
 
-  // We need at least a copy of the source and a target buffer of the same
-  // size (both at 32bpp).
-  $required = $width * $height * 8;
-  // We intend to prevent color scheme changes if there isn't enough memory
-  // available.  memory_get_usage(TRUE) returns a more accurate number than
-  // memory_get_usage(), therefore we won't inadvertently reject a color
-  // scheme change based on a faulty memory calculation.
-  $usage = memory_get_usage(TRUE);
-  $memory_limit = ini_get('memory_limit');
-  $size = parse_size($memory_limit);
-  if (!drupal_check_memory_limit($usage + $required, $memory_limit)) {
-    drupal_set_message(t('There is not enough memory available to PHP to change this theme\'s color scheme. You need at least %size more. Check the <a href="@url">PHP documentation</a> for more information.', array('%size' => format_size($usage + $required - $size), '@url' => 'http://www.php.net/manual/ini.core.php#ini.sect.resource-limits')), 'error');
-    return;
+    // We need at least a copy of the source and a target buffer of the same
+    // size (both at 32bpp).
+    $required = $width * $height * 8;
+    // We intend to prevent color scheme changes if there isn't enough memory
+    // available.  memory_get_usage(TRUE) returns a more accurate number than
+    // memory_get_usage(), therefore we won't inadvertently reject a color
+    // scheme change based on a faulty memory calculation.
+    $usage = memory_get_usage(TRUE);
+    $memory_limit = ini_get('memory_limit');
+    $size = Bytes::toInt($memory_limit);
+    if (!Environment::checkMemoryLimit($usage + $required, $memory_limit)) {
+      drupal_set_message(t('There is not enough memory available to PHP to change this theme\'s color scheme. You need at least %size more. Check the <a href="@url">PHP documentation</a> for more information.', array('%size' => format_size($usage + $required - $size), '@url' => 'http://www.php.net/manual/ini.core.php#ini.sect.resource-limits')), 'error');
+      return;
+    }
   }
 
   // Delete old files.
@@ -334,7 +440,7 @@ function color_scheme_form_submit($form, &$form_state) {
 
   // Prepare target locations for generated files.
   $id = $theme . '-' . substr(hash('sha256', serialize($palette) . microtime()), 0, 8);
-  $paths['color'] = file_default_scheme() . '://color';
+  $paths['color'] = 'public://color';
   $paths['target'] = $paths['color'] . '/' . $id;
   foreach ($paths as $path) {
     file_prepare_directory($path, FILE_CREATE_DIRECTORY);
@@ -360,7 +466,7 @@ function color_scheme_form_submit($form, &$form_state) {
   }
 
   // Render new images, if image has been provided.
-  if ($info['base_image']) {
+  if (isset($info['base_image'])) {
     _color_render_images($theme, $info, $paths, $palette);
   }
 
@@ -537,7 +643,7 @@ function _color_render_images($theme, &$info, &$paths, $palette) {
     if ($file == 'screenshot.png') {
       $slice = imagecreatetruecolor(150, 90);
       imagecopyresampled($slice, $target, 0, 0, $x, $y, 150, 90, $width, $height);
-      \Drupal::config('color.' . $theme)
+      \Drupal::config('color.theme.' . $theme)
         ->set('screenshot', $image)
         ->save();
     }
@@ -725,39 +831,4 @@ function _color_rgb2hsl($rgb) {
   }
 
   return array($h, $s, $l);
-}
-
-/**
- * Implements hook_library_info().
- */
-function color_library_info() {
-  $libraries['drupal.color'] = array(
-    'title' => 'Color',
-    'version' => \Drupal::VERSION,
-    'js' => array(
-      drupal_get_path('module', 'color') . '/color.js' => array(),
-    ),
-    'dependencies' => array(
-      array('system', 'jquery'),
-      array('system', 'drupal'),
-      array('system', 'jquery.once'),
-      array('system', 'jquery.farbtastic'),
-      array('color', 'drupal.color.preview'),
-    ),
-  );
-  $libraries['drupal.color.preview'] = array(
-    'title' => 'Color preview',
-    'version' => \Drupal::VERSION,
-    'js' => array(
-      drupal_get_path('module', 'color') . '/preview.js' => array(),
-    ),
-    'dependencies' => array(
-      array('system', 'jquery'),
-      array('system', 'drupal'),
-      array('system', 'drupalSettings'),
-      array('system', 'jquery.once'),
-    ),
-  );
-
-  return $libraries;
 }

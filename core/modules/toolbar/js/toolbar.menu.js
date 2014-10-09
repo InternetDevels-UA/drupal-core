@@ -7,12 +7,12 @@
 
 (function ($, Drupal, drupalSettings) {
 
-"use strict";
+  "use strict";
 
-/**
- * Store the open menu tray.
- */
-var activeItem = drupalSettings.basePath + Drupal.encodePath(drupalSettings.currentPath);
+  /**
+   * Store the open menu tray.
+   */
+  var activeItem = Drupal.url(drupalSettings.path.currentPath);
 
   $.fn.drupalToolbarMenu = function () {
 
@@ -20,13 +20,14 @@ var activeItem = drupalSettings.basePath + Drupal.encodePath(drupalSettings.curr
       'handleOpen': Drupal.t('Extend'),
       'handleClose': Drupal.t('Collapse')
     };
+
     /**
      * Handle clicks from the disclosure button on an item with sub-items.
      *
      * @param {Object} event
      *   A jQuery Event object.
      */
-    function toggleClickHandler (event) {
+    function toggleClickHandler(event) {
       var $toggle = $(event.target);
       var $item = $toggle.closest('li');
       // Toggle the list item.
@@ -35,6 +36,7 @@ var activeItem = drupalSettings.basePath + Drupal.encodePath(drupalSettings.curr
       var $openItems = $item.siblings().filter('.open');
       toggleList($openItems, false);
     }
+
     /**
      * Toggle the open/close state of a list is a menu.
      *
@@ -45,7 +47,7 @@ var activeItem = drupalSettings.basePath + Drupal.encodePath(drupalSettings.curr
      *   A flag that forces toggleClass to add or a remove a class, rather than
      *   simply toggling its presence.
      */
-    function toggleList ($item, switcher) {
+    function toggleList($item, switcher) {
       var $toggle = $item.children('.toolbar-box').children('.toolbar-handle');
       switcher = (typeof switcher !== 'undefined') ? switcher : !$item.hasClass('open');
       // Toggle the item open state.
@@ -56,8 +58,9 @@ var activeItem = drupalSettings.basePath + Drupal.encodePath(drupalSettings.curr
       $toggle
         .find('.action')
         // Expand Structure, Collapse Structure
-        .text((switcher) ?  ui.handleClose : ui.handleOpen);
+        .text((switcher) ? ui.handleClose : ui.handleOpen);
     }
+
     /**
      * Add markup to the menu elements.
      *
@@ -69,7 +72,7 @@ var activeItem = drupalSettings.basePath + Drupal.encodePath(drupalSettings.curr
      * @param {jQuery} $menu
      *   The root of the menu to be initialized.
      */
-    function initItems ($menu) {
+    function initItems($menu) {
       var options = {
         'class': 'toolbar-icon toolbar-handle',
         'action': ui.handleOpen,
@@ -77,17 +80,18 @@ var activeItem = drupalSettings.basePath + Drupal.encodePath(drupalSettings.curr
       };
       // Initialize items and their links.
       $menu.find('li > a').wrap('<div class="toolbar-box">');
-        // Add a handle to each list item if it has a menu.
+      // Add a handle to each list item if it has a menu.
       $menu.find('li').each(function (index, element) {
-          var $item = $(element);
-          if ($item.children('ul.menu').length) {
-            var $box = $item.children('.toolbar-box');
-            options.text = Drupal.t('@label', {'@label': $box.find('a').text()});
-            $item.children('.toolbar-box')
-              .append(Drupal.theme('toolbarMenuItemToggle', options));
-          }
-        });
+        var $item = $(element);
+        if ($item.children('ul.menu').length) {
+          var $box = $item.children('.toolbar-box');
+          options.text = Drupal.t('@label', {'@label': $box.find('a').text()});
+          $item.children('.toolbar-box')
+            .append(Drupal.theme('toolbarMenuItemToggle', options));
+        }
+      });
     }
+
     /**
      * Adds a level class to each list based on its depth in the menu.
      *
@@ -100,7 +104,7 @@ var activeItem = drupalSettings.basePath + Drupal.encodePath(drupalSettings.curr
      * @param {Integer} level
      *   The current level number to be assigned to the list elements.
      */
-    function markListLevels ($lists, level) {
+    function markListLevels($lists, level) {
       level = (!level) ? 1 : level;
       var $lis = $lists.children('li').addClass('level-' + level);
       $lists = $lis.children('ul');
@@ -108,6 +112,7 @@ var activeItem = drupalSettings.basePath + Drupal.encodePath(drupalSettings.curr
         markListLevels($lists, level + 1);
       }
     }
+
     /**
      * On page load, open the active menu item.
      *
@@ -117,7 +122,7 @@ var activeItem = drupalSettings.basePath + Drupal.encodePath(drupalSettings.curr
      * @param {jQuery} $menu
      *   The root of the menu.
      */
-    function openActiveItem ($menu) {
+    function openActiveItem($menu) {
       var pathItem = $menu.find('a[href="' + location.pathname + '"]');
       if (pathItem.length && !activeItem) {
         activeItem = location.pathname;
@@ -128,6 +133,7 @@ var activeItem = drupalSettings.basePath + Drupal.encodePath(drupalSettings.curr
         toggleList($activeTrail, true);
       }
     }
+
     // Bind event handlers.
     $(document)
       .on('click.toolbar', '.toolbar-handle', toggleClickHandler);

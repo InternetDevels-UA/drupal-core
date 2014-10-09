@@ -13,7 +13,9 @@
 
   Drupal.AjaxCommands.prototype.viewsShowButtons = function (ajax, response, status) {
     $('div.views-edit-view div.form-actions').removeClass('js-hide');
-    $('div.views-edit-view div.view-changed.messages').removeClass('js-hide');
+    if (response.changed) {
+      $('div.views-edit-view div.view-changed.messages').removeClass('js-hide');
+    }
   };
 
   Drupal.AjaxCommands.prototype.viewsTriggerPreview = function (ajax, response, status) {
@@ -23,8 +25,7 @@
   };
 
   Drupal.AjaxCommands.prototype.viewsReplaceTitle = function (ajax, response, status) {
-    // In case we're in the overlay, get a reference to the underlying window.
-    var doc = parent.document;
+    var doc = document;
     // For the <title> element, make a best-effort attempt to replace the page
     // title and leave the site name alone. If the theme doesn't use the site
     // name in the <title> element, this will fail.
@@ -36,7 +37,6 @@
     doc.title = oldTitle.replace(re, response.title + ' $1 ' + response.siteName);
 
     $('h1.page-title').text(response.title);
-    $('h1#overlay-title').text(response.title);
   };
 
   /**
@@ -51,9 +51,9 @@
    */
   Drupal.behaviors.livePreview = {
     attach: function (context) {
-      $('input#edit-displays-live-preview', context).once('views-ajax-processed').click(function() {
+      $('input#edit-displays-live-preview', context).once('views-ajax').on('click', function () {
         if ($(this).is(':checked')) {
-          $('#preview-submit').click();
+          $('#preview-submit').trigger('click');
         }
       });
     }
@@ -64,13 +64,13 @@
    */
   Drupal.behaviors.syncPreviewDisplay = {
     attach: function (context) {
-      $("#views-tabset a").once('views-ajax-processed').click(function() {
+      $("#views-tabset a").once('views-ajax').on('click', function () {
         var href = $(this).attr('href');
         // Cut of #views-tabset.
         var display_id = href.substr(11);
         // Set the form element.
         $("#views-live-preview #preview-display-id").val(display_id);
-      }).addClass('views-ajax-processed');
+      });
     }
   };
 
@@ -79,10 +79,10 @@
     attach: function (context, settings) {
       var base_element_settings = {
         'event': 'click',
-        'progress': { 'type': 'throbber' }
+        'progress': { 'type': 'fullscreen' }
       };
       // Bind AJAX behaviors to all items showing the class.
-      $('a.views-ajax-link', context).once('views-ajax-processed').each(function () {
+      $('a.views-ajax-link', context).once('views-ajax').each(function () {
         var element_settings = base_element_settings;
         // Set the URL to go to the anchor.
         if ($(this).attr('href')) {
@@ -93,49 +93,49 @@
       });
 
       $('div#views-live-preview a')
-        .once('views-ajax-processed').each(function () {
-        // We don't bind to links without a URL.
-        if (!$(this).attr('href')) {
-          return true;
-        }
+        .once('views-ajax').each(function () {
+          // We don't bind to links without a URL.
+          if (!$(this).attr('href')) {
+            return true;
+          }
 
-        var element_settings = base_element_settings;
-        // Set the URL to go to the anchor.
-        element_settings.url = $(this).attr('href');
-        if (Drupal.Views.getPath(element_settings.url).substring(0, 21) !== 'admin/structure/views') {
-          return true;
-        }
+          var element_settings = base_element_settings;
+          // Set the URL to go to the anchor.
+          element_settings.url = $(this).attr('href');
+          if (Drupal.Views.getPath(element_settings.url).substring(0, 21) !== 'admin/structure/views') {
+            return true;
+          }
 
-        element_settings.wrapper = 'views-preview-wrapper';
-        element_settings.method = 'replaceWith';
-        var base = $(this).attr('id');
-        Drupal.ajax[base] = new Drupal.ajax(base, this, element_settings);
-      });
+          element_settings.wrapper = 'views-preview-wrapper';
+          element_settings.method = 'replaceWith';
+          var base = $(this).attr('id');
+          Drupal.ajax[base] = new Drupal.ajax(base, this, element_settings);
+        });
 
       // Within a live preview, make exposed widget form buttons re-trigger the
       // Preview button.
       // @todo Revisit this after fixing Views UI to display a Preview outside
       //   of the main Edit form.
       $('div#views-live-preview input[type=submit]')
-        .once('views-ajax-processed').each(function(event) {
-        $(this).click(function () {
-          this.form.clk = this;
-          return true;
+        .once('views-ajax').each(function (event) {
+          $(this).on('click', function () {
+            this.form.clk = this;
+            return true;
+          });
+          var element_settings = base_element_settings;
+          // Set the URL to go to the anchor.
+          element_settings.url = $(this.form).attr('action');
+          if (Drupal.Views.getPath(element_settings.url).substring(0, 21) !== 'admin/structure/views') {
+            return true;
+          }
+
+          element_settings.wrapper = 'views-preview-wrapper';
+          element_settings.method = 'replaceWith';
+          element_settings.event = 'click';
+
+          var base = $(this).attr('id');
+          Drupal.ajax[base] = new Drupal.ajax(base, this, element_settings);
         });
-        var element_settings = base_element_settings;
-        // Set the URL to go to the anchor.
-        element_settings.url = $(this.form).attr('action');
-        if (Drupal.Views.getPath(element_settings.url).substring(0, 21) !== 'admin/structure/views') {
-          return true;
-        }
-
-        element_settings.wrapper = 'views-preview-wrapper';
-        element_settings.method = 'replaceWith';
-        element_settings.event = 'click';
-
-        var base = $(this).attr('id');
-        Drupal.ajax[base] = new Drupal.ajax(base, this, element_settings);
-      });
 
     }
   };
