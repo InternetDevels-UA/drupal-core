@@ -89,9 +89,7 @@ class ThemeInitialization implements ThemeInitializationInterface {
     $ancestor = $theme_name;
     while ($ancestor && isset($themes[$ancestor]->base_theme)) {
       $ancestor = $themes[$ancestor]->base_theme;
-      if (isset($themes[$ancestor])) {
-        $base_themes[] = $themes[$ancestor];
-      }
+      $base_themes[] = $themes[$ancestor];
     }
 
     $active_theme = $this->getActiveTheme($themes[$theme_name], $base_themes);
