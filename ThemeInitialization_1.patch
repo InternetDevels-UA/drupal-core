@@ -1,0 +1,15 @@
+diff --git a/core/lib/Drupal/Core/Theme/ThemeInitialization.php b/core/lib/Drupal/Core/Theme/ThemeInitialization.php
+index d4e1d95..8257b36 100644
+--- a/core/lib/Drupal/Core/Theme/ThemeInitialization.php
++++ b/core/lib/Drupal/Core/Theme/ThemeInitialization.php
+@@ -89,7 +89,9 @@ public function getActiveThemeByName($theme_name) {
+     $ancestor = $theme_name;
+     while ($ancestor && isset($themes[$ancestor]->base_theme)) {
+       $ancestor = $themes[$ancestor]->base_theme;
+-      $base_themes[] = $themes[$ancestor];
++      if (isset($themes[$ancestor])) {
++        $base_themes[] = $themes[$ancestor];
++      }
+     }
+
+     $active_theme = $this->getActiveTheme($themes[$theme_name], $base_themes);
