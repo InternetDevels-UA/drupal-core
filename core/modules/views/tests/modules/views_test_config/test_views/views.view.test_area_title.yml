@@ -1,15 +1,21 @@
-base_table: views_test_data
-core: '8'
+langcode: und
+status: true
+dependencies: {  }
+id: test_area_title
+label: ''
+module: views
 description: ''
-status: '1'
+tag: ''
+base_table: views_test_data
+base_field: nid
+core: '8'
 display:
   default:
     display_options:
       defaults:
-        fields: '0'
-        pager: '0'
-        pager_options: '0'
-        sorts: '0'
+        fields: false
+        pager: false
+        sorts: false
       fields:
         id:
           field: id
@@ -19,9 +25,8 @@ display:
           plugin_id: numeric
       pager:
         options:
-          offset: '0'
+          offset: 0
         type: none
-      pager_options: {  }
       sorts:
         id:
           field: id
@@ -45,7 +50,7 @@ display:
     display_options:
       path: test-area-title
       defaults:
-        header: '0'
+        header: false
       header:
         title:
           field: title
@@ -57,6 +62,3 @@ display:
     display_title: 'Page 1'
     id: page_1
     position: 1
-label: ''
-id: test_area_title
-tag: ''

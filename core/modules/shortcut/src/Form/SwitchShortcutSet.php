@@ -105,9 +105,13 @@ class SwitchShortcutSet extends FormBase {
       $form['label'] = array(
         '#type' => 'textfield',
         '#title' => $this->t('Label'),
-        '#title_display' => 'invisible',
         '#description' => $this->t('The new set is created by copying items from your default shortcut set.'),
         '#access' => $add_access,
+        '#states' => array(
+          'visible' => array(
+            ':input[name="set"]' => array('value' => 'new'),
+          ),
+        ),
       );
       $form['id'] = array(
         '#type' => 'machine_name',
@@ -130,10 +134,6 @@ class SwitchShortcutSet extends FormBase {
         $default_set = $this->shortcutSetStorage->getDefaultSet($this->user);
         $form['new']['#description'] = $this->t('The new set is created by copying items from the %default set.', array('%default' => $default_set->label()));
       }
-
-      $form['#attached'] = array(
-        'library' => array('shortcut/drupal.shortcut.admin'),
-      );
 
       $form['actions'] = array('#type' => 'actions');
       $form['actions']['submit'] = array(
@@ -174,10 +174,6 @@ class SwitchShortcutSet extends FormBase {
       // Check to prevent creating a shortcut set with an empty title.
       if (trim($form_state->getValue('label')) == '') {
         $form_state->setErrorByName('new', $this->t('The new set label is required.'));
-      }
-      // Check to prevent a duplicate title.
-      if (shortcut_set_title_exists($form_state->getValue('label'))) {
-        $form_state->setErrorByName('label', $this->t('The shortcut set %name already exists. Choose another name.', array('%name' => $form_state->getValue('label'))));
       }
     }
   }

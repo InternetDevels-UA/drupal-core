@@ -8,6 +8,8 @@
 namespace Drupal\field\Tests;
 
 use Drupal\Component\Utility\Unicode;
+use Drupal\field\Entity\FieldStorageConfig;
+use Drupal\field\Entity\FieldConfig;
 use Drupal\language\Entity\ConfigurableLanguage;
 
 /**
@@ -62,17 +64,16 @@ class TranslationWebTest extends FieldTestBase {
       'entity_type' => $this->entity_type,
       'type' => 'test_field',
       'cardinality' => 4,
-      'translatable' => TRUE,
     );
     entity_create('field_storage_config', $field_storage)->save();
-    $this->fieldStorage = entity_load('field_storage_config', $this->entity_type . '.' . $this->field_name);
+    $this->fieldStorage = FieldStorageConfig::load($this->entity_type . '.' . $this->field_name);
 
     $field = array(
       'field_storage' => $this->fieldStorage,
       'bundle' => $this->entity_type,
     );
     entity_create('field_config', $field)->save();
-    $this->field = entity_load('field_config', $this->entity_type . '.' . $field['bundle'] . '.' . $this->field_name);
+    $this->field = FieldConfig::load($this->entity_type . '.' . $field['bundle'] . '.' . $this->field_name);
 
     entity_get_form_display($this->entity_type, $this->entity_type, 'default')
       ->setComponent($this->field_name)

@@ -28,9 +28,9 @@ class InstallUninstallTest extends ModuleTestBase {
 
     // Install and uninstall module_test to ensure hook_preinstall_module and
     // hook_preuninstall_module are fired as expected.
-    $this->container->get('module_handler')->install(array('module_test'));
+    $this->container->get('module_installer')->install(array('module_test'));
     $this->assertEqual($this->container->get('state')->get('system_test_preinstall_module'), 'module_test');
-    $this->container->get('module_handler')->uninstall(array('module_test'));
+    $this->container->get('module_installer')->uninstall(array('module_test'));
     $this->assertEqual($this->container->get('state')->get('system_test_preuninstall_module'), 'module_test');
     $this->resetAll();
 
@@ -156,7 +156,7 @@ class InstallUninstallTest extends ModuleTestBase {
     if ($module == 'forum') {
       // Forum cannot be uninstalled until all of the content entities related
       // to it have been deleted.
-      $vid = \Drupal::config('forum.settings')->get('vocabulary');
+      $vid = $this->config('forum.settings')->get('vocabulary');
       $terms = entity_load_multiple_by_properties('taxonomy_term', ['vid' => $vid]);
       foreach ($terms as $term) {
         $term->delete();

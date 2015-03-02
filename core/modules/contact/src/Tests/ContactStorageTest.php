@@ -8,15 +8,19 @@
 namespace Drupal\contact\Tests;
 
 use Drupal\Component\Utility\Unicode;
-use Drupal\config\Tests\SchemaCheckTestTrait;
 use Drupal\contact\Entity\Message;
 
 /**
  * Tests storing contact messages.
+ *
+ * Note that the various test methods in ContactSitewideTest are also run by
+ * this test. This is by design to ensure that regular contact.module functions
+ * continue to work when a storage handler other than ContentEntityNullStorage
+ * is enabled for contact Message entities.
+ *
+ * @group contact
  */
 class ContactStorageTest extends ContactSitewideTest {
-
-  use SchemaCheckTestTrait;
 
   /**
    * Modules to enable.
@@ -30,14 +34,6 @@ class ContactStorageTest extends ContactSitewideTest {
     'contact_storage_test',
     'contact_test',
   );
-
-  public static function getInfo() {
-    return array(
-      'name' => 'Contact Storage',
-      'description' => 'Tests that contact messages can be stored.',
-      'group' => 'Contact',
-    );
-  }
 
   /**
    * Tests configuration options and the site-wide contact form.
@@ -77,9 +73,8 @@ class ContactStorageTest extends ContactSitewideTest {
     $this->assertEqual($message->getSubject(), $subject);
     $this->assertEqual($message->getSenderMail(), $mail);
 
-    $config = \Drupal::config("contact.form.$id");
+    $config = $this->config("contact.form.$id");
     $this->assertEqual($config->get('id'), $id);
-    $this->assertConfigSchema(\Drupal::service('config.typed'), $config->getName(), $config->get());
   }
 
 }

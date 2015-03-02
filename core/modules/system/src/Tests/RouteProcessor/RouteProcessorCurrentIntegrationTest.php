@@ -44,10 +44,10 @@ class RouteProcessorCurrentIntegrationTest extends KernelTestBase {
     // Test request with subdir on homepage.
     $server = [
       'SCRIPT_NAME' => '/subdir/index.php',
-      'SCRIPT_FILENAME' => DRUPAL_ROOT . '/index.php',
+      'SCRIPT_FILENAME' => \Drupal::root() . '/index.php',
       'SERVER_NAME' => 'http://www.example.com',
     ];
-    $request = Request::create('/subdir', 'GET', [], [], [], $server);
+    $request = Request::create('/subdir/', 'GET', [], [], [], $server);
     $request->attributes->set(RouteObjectInterface::ROUTE_NAME, '<front>');
     $request->attributes->set(RouteObjectInterface::ROUTE_OBJECT, new Route('/'));
 
@@ -58,7 +58,7 @@ class RouteProcessorCurrentIntegrationTest extends KernelTestBase {
     // Test request with subdir on other page.
     $server = [
       'SCRIPT_NAME' => '/subdir/index.php',
-      'SCRIPT_FILENAME' => DRUPAL_ROOT . '/index.php',
+      'SCRIPT_FILENAME' => \Drupal::root() . '/index.php',
       'SERVER_NAME' => 'http://www.example.com',
     ];
     $request = Request::create('/subdir/node/add', 'GET', [], [], [], $server);
@@ -72,7 +72,7 @@ class RouteProcessorCurrentIntegrationTest extends KernelTestBase {
     // Test request without subdir on the homepage.
     $server = [
       'SCRIPT_NAME' => '/index.php',
-      'SCRIPT_FILENAME' => DRUPAL_ROOT . '/index.php',
+      'SCRIPT_FILENAME' => \Drupal::root() . '/index.php',
       'SERVER_NAME' => 'http://www.example.com',
     ];
     $request = Request::create('/', 'GET', [], [], [], $server);
@@ -86,7 +86,7 @@ class RouteProcessorCurrentIntegrationTest extends KernelTestBase {
     // Test request without subdir on other page.
     $server = [
       'SCRIPT_NAME' => '/index.php',
-      'SCRIPT_FILENAME' => DRUPAL_ROOT . '/index.php',
+      'SCRIPT_FILENAME' => \Drupal::root() . '/index.php',
       'SERVER_NAME' => 'http://www.example.com',
     ];
     $request = Request::create('/node/add', 'GET', [], [], [], $server);
@@ -96,6 +96,20 @@ class RouteProcessorCurrentIntegrationTest extends KernelTestBase {
     $request_stack->push($request);
     $request_context->fromRequest($request);
     $this->assertEqual('/node/add', \Drupal::url('<current>'));
+
+    // Test request without a found route. This happens for example on an
+    // not found exception page.
+    $server = [
+      'SCRIPT_NAME' => '/index.php',
+      'SCRIPT_FILENAME' => \Drupal::root() . '/index.php',
+      'SERVER_NAME' => 'http://www.example.com',
+    ];
+    $request = Request::create('/invalid-path', 'GET', [], [], [], $server);
+
+    $request_stack->push($request);
+    $request_context->fromRequest($request);
+    // In case we have no routing, the current route should point to the front.
+    $this->assertEqual('/', \Drupal::url('<current>'));
   }
 
 }

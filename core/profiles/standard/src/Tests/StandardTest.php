@@ -10,6 +10,7 @@ namespace Drupal\standard\Tests;
 use Drupal\config\Tests\SchemaCheckTestTrait;
 use Drupal\contact\Entity\ContactForm;
 use Drupal\simpletest\WebTestBase;
+use Drupal\user\Entity\Role;
 
 /**
  * Tests Standard installation profile expectations.
@@ -23,6 +24,13 @@ class StandardTest extends WebTestBase {
   protected $profile = 'standard';
 
   /**
+   * The admin user.
+   *
+   * @var \Drupal\user\UserInterface
+   */
+  protected $adminUser;
+
+  /**
    * Tests Standard installation profile.
    */
   function testStandard() {
@@ -32,12 +40,14 @@ class StandardTest extends WebTestBase {
     $this->assertResponse(200);
 
     // Test anonymous user can access 'Main navigation' block.
-    $admin = $this->drupalCreateUser(array(
+    $this->adminUser = $this->drupalCreateUser(array(
       'administer blocks',
       'post comments',
       'skip comment approval',
+      'create article content',
+      'create page content',
     ));
-    $this->drupalLogin($admin);
+    $this->drupalLogin($this->adminUser);
     // Configure the block.
     $this->drupalGet('admin/structure/block/add/system_menu_block:main/bartik');
     $this->drupalPostForm(NULL, array(
@@ -48,7 +58,7 @@ class StandardTest extends WebTestBase {
     $this->drupalGet('');
     $this->assertText('Main navigation');
 
-    // Verify we have role = aria on system_powered_by and system_help_block
+    // Verify we have role = aria on system_powered_by and help_block
     // blocks.
     $this->drupalGet('admin/structure/block');
     $elements = $this->xpath('//div[@role=:role and @id=:id]', array(
@@ -71,16 +81,18 @@ class StandardTest extends WebTestBase {
 
     // Ensure comments don't show in the front page RSS feed.
     // Create an article.
-    $node = $this->drupalCreateNode(array(
+    $this->drupalCreateNode(array(
       'type' => 'article',
       'title' => 'Foobar',
       'promote' => 1,
       'status' => 1,
+      'body' => array(array('value' => 'Then she picked out two somebodies,<br />Sally and me', 'format' => 'basic_html')),
     ));
 
     // Add a comment.
-    $this->drupalLogin($admin);
+    $this->drupalLogin($this->adminUser);
     $this->drupalGet('node/1');
+    $this->assertRaw('Then she picked out two somebodies,<br />Sally and me', 'Found a line break.');
     $this->drupalPostForm(NULL, array(
       'subject[0][value]' => 'Barfoo',
       'comment_body[0][value]' => 'Then she picked out two somebodies, Sally and me',
@@ -90,15 +102,18 @@ class StandardTest extends WebTestBase {
     $this->assertText('Foobar');
     $this->assertNoText('Then she picked out two somebodies, Sally and me');
 
+    // Ensure block body exists.
+    $this->drupalGet('block/add');
+    $this->assertFieldByName('body[0][value]');
+
     // Now we have all configuration imported, test all of them for schema
     // conformance. Ensures all imported default configuration is valid when
     // standard profile modules are enabled.
     $names = $this->container->get('config.storage')->listAll();
-    $factory = $this->container->get('config.factory');
     /** @var \Drupal\Core\Config\TypedConfigManagerInterface $typed_config */
     $typed_config = $this->container->get('config.typed');
     foreach ($names as $name) {
-      $config = $factory->get($name);
+      $config = $this->config($name);
       $this->assertConfigSchema($typed_config, $name, $config->get());
     }
 
@@ -110,13 +125,24 @@ class StandardTest extends WebTestBase {
     // The installer does not have this limitation since it ensures that all of
     // the install profiles dependencies are installed before creating the
     // editor configuration.
-    \Drupal::moduleHandler()->uninstall(array('editor', 'ckeditor'));
+    \Drupal::service('module_installer')->uninstall(array('editor', 'ckeditor'));
     $this->rebuildContainer();
-    \Drupal::moduleHandler()->install(array('editor'));
+    \Drupal::service('module_installer')->install(array('editor'));
     /** @var \Drupal\contact\ContactFormInterface $contact_form */
     $contact_form = ContactForm::load('feedback');
     $recipients = $contact_form->getRecipients();
     $this->assertEqual(['simpletest@example.com'], $recipients);
+
+    $role = Role::create([
+      'id' => 'admin_theme',
+      'label' => 'Admin theme',
+    ]);
+    $role->grantPermission('view the administration theme');
+    $role->save();
+    $this->adminUser->addRole($role->id());
+    $this->adminUser->save();
+    $this->drupalGet('node/add');
+    $this->assertResponse(200);
   }
 
 }

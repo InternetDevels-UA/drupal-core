@@ -41,6 +41,20 @@ if ($args['execute-test']) {
   exit;
 }
 
+if ($args['list']) {
+  // Display all available tests.
+  echo "\nAvailable test groups & classes\n";
+  echo   "-------------------------------\n\n";
+  $groups = simpletest_test_get_all($args['module']);
+  foreach ($groups as $group => $tests) {
+    echo $group . "\n";
+    foreach ($tests as $class => $info) {
+      echo " - $class\n";
+    }
+  }
+  exit;
+}
+
 simpletest_script_setup_database(TRUE);
 
 if ($args['clean']) {
@@ -52,20 +66,6 @@ if ($args['clean']) {
   $messages = drupal_get_messages('status');
   foreach ($messages['status'] as $text) {
     echo " - " . $text . "\n";
-  }
-  exit;
-}
-
-if ($args['list']) {
-  // Display all available tests.
-  echo "\nAvailable test groups & classes\n";
-  echo   "-------------------------------\n\n";
-  $groups = simpletest_test_get_all($args['module']);
-  foreach ($groups as $group => $tests) {
-    echo $group . "\n";
-    foreach ($tests as $class => $info) {
-      echo " - $class\n";
-    }
   }
   exit;
 }
@@ -159,6 +159,8 @@ All arguments are long options.
               (e.g., 'node')
 
   --class     Run tests identified by specific class names, instead of group names.
+              A specific test method can be added, for example,
+              'Drupal\book\Tests\BookTest::testBookExport'.
 
   --file      Run tests identified by specific file names, instead of group names.
               Specify the path and the extension
@@ -520,13 +522,6 @@ function simpletest_script_execute_batch($test_classes) {
       $test_ids[] = $test_id;
 
       $test_class = array_shift($test_classes);
-      // Process phpunit tests immediately since they are fast and we don't need
-      // to fork for them.
-      if (is_subclass_of($test_class, 'Drupal\Tests\UnitTestCase')) {
-        simpletest_script_run_phpunit($test_id, $test_class);
-        continue;
-      }
-
       // Fork a child process.
       $command = simpletest_script_command($test_id, $test_class);
       $process = proc_open($command, array(), $pipes, NULL, NULL, array('bypass_shell' => TRUE));
@@ -625,12 +620,25 @@ function simpletest_script_run_one_test($test_id, $test_class) {
   global $args;
 
   try {
-    $test = new $test_class($test_id);
-    $test->dieOnFail = (bool) $args['die-on-fail'];
-    $test->verbose = (bool) $args['verbose'];
-    $test->run();
-
-    simpletest_script_reporter_display_summary($test_class, $test->results);
+    if (strpos($test_class, '::') > 0) {
+      list($class_name, $method) = explode('::', $test_class, 2);
+      $methods = [$method];
+    }
+    else {
+      $class_name = $test_class;
+      // Use empty array to run all the test methods.
+      $methods = array();
+    }
+    $test = new $class_name($test_id);
+    if (is_subclass_of($test_class, '\PHPUnit_Framework_TestCase')) {
+      simpletest_script_run_phpunit($test_id, $test_class);
+    }
+    else {
+      $test->dieOnFail = (bool) $args['die-on-fail'];
+      $test->verbose = (bool) $args['verbose'];
+      $test->run($methods);
+      simpletest_script_reporter_display_summary($test_class, $test->results);
+    }
 
     // Finished, kill this runner.
     exit(0);
@@ -696,6 +704,10 @@ function simpletest_script_command($test_id, $test_class) {
  * @see simpletest_script_run_one_test()
  */
 function simpletest_script_cleanup($test_id, $test_class, $exitcode) {
+  if (strpos($test_class, 'Drupal\\Tests\\') === 0) {
+    // PHPUnit test, move on.
+    return;
+  }
   // Retrieve the last database prefix used for testing.
   list($db_prefix, ) = simpletest_last_test_get($test_id);
 
@@ -774,7 +786,8 @@ function simpletest_script_get_test_list() {
     if ($args['class']) {
       $test_list = array();
       foreach ($args['test_names'] as $test_class) {
-        if (class_exists($test_class)) {
+        list($class_name, ) = explode('::', $test_class, 2);
+        if (class_exists($class_name)) {
           $test_list[] = $test_class;
         }
         else {
@@ -783,8 +796,8 @@ function simpletest_script_get_test_list() {
           foreach ($groups as $group) {
             $all_classes = array_merge($all_classes, array_keys($group));
           }
-          simpletest_script_print_error('Test class not found: ' . $test_class);
-          simpletest_script_print_alternatives($test_class, $all_classes, 6);
+          simpletest_script_print_error('Test class not found: ' . $class_name);
+          simpletest_script_print_alternatives($class_name, $all_classes, 6);
           exit(1);
         }
       }
@@ -811,7 +824,7 @@ function simpletest_script_get_test_list() {
         else {
           foreach ($matches[1] as $class_name) {
             $namespace_class = $namespace . '\\' . $class_name;
-            if (is_subclass_of($namespace_class, '\Drupal\simpletest\TestBase') || is_subclass_of($namespace_class, '\Drupal\Tests\UnitTestCase')) {
+            if (is_subclass_of($namespace_class, '\Drupal\simpletest\TestBase') || is_subclass_of($namespace_class, '\PHPUnit_Framework_TestCase')) {
               $test_list[] = $namespace_class;
             }
           }
@@ -1139,8 +1152,8 @@ function simpletest_script_load_messages_by_test_id($test_ids) {
 
   foreach ($test_id_chunks as $test_id_chunk) {
     $result_chunk = Database::getConnection('default', 'test-runner')
-      ->query("SELECT * FROM {simpletest} WHERE test_id IN (:test_ids) ORDER BY test_class, message_id", array(
-        ':test_ids' => $test_id_chunk,
+      ->query("SELECT * FROM {simpletest} WHERE test_id IN ( :test_ids[] ) ORDER BY test_class, message_id", array(
+        ':test_ids[]' => $test_id_chunk,
       ))->fetchAll();
     if ($result_chunk) {
       $results = array_merge($results, $result_chunk);

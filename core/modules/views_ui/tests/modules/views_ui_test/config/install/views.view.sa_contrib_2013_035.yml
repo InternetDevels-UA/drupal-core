@@ -1,9 +1,9 @@
-uuid: 93005672-5b8a-4a7a-9342-6651552bb753
 langcode: en
 status: true
 dependencies:
   module:
     - node
+    - user
 id: sa_contrib_2013_035
 label: SA_CONTRIB_2013_035
 module: views
@@ -32,7 +32,7 @@ display:
           disable_sql_rewrite: false
           distinct: false
           replica: false
-          query_comment: false
+          query_comment: ''
           query_tags: {  }
       exposed_form:
         type: basic
@@ -89,7 +89,7 @@ display:
             suffix: ''
             target: ''
             nl2br: false
-            max_length: ''
+            max_length: 0
             word_boundary: false
             ellipsis: false
             more_link: false
@@ -113,6 +113,8 @@ display:
           hide_alter_empty: true
           link_to_node: true
           plugin_id: node
+          entity_type: node
+          entity_field: title
         title_1:
           id: title_1
           table: node_field_data
@@ -139,7 +141,7 @@ display:
             suffix: ''
             target: ''
             nl2br: false
-            max_length: ''
+            max_length: 0
             word_boundary: true
             ellipsis: true
             more_link: false
@@ -163,6 +165,8 @@ display:
           hide_alter_empty: true
           link_to_node: true
           plugin_id: node
+          entity_type: node
+          entity_field: title
       filters: {  }
       sorts: {  }
       header:
@@ -175,8 +179,6 @@ display:
       empty: {  }
       relationships: {  }
       arguments: {  }
-      field_langcode: '***LANGUAGE_language_content***'
-      field_langcode_add_to_query: null
       title: '<marquee>VIEWS TITLE</marquee>'
   page_1:
     display_plugin: page
@@ -184,6 +186,4 @@ display:
     display_title: Page
     position: 2
     display_options:
-      field_langcode: '***LANGUAGE_language_content***'
-      field_langcode_add_to_query: null
       path: foobar

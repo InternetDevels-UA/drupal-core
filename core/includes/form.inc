@@ -15,6 +15,7 @@ use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Form\OptGroup;
 use Drupal\Core\Render\Element;
 use Drupal\Core\Template\Attribute;
+use Drupal\Core\Url;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 
 /**
@@ -27,79 +28,6 @@ use Symfony\Component\HttpFoundation\RedirectResponse;
  */
 function drupal_form_submit($form_arg, FormStateInterface $form_state) {
   \Drupal::formBuilder()->submitForm($form_arg, $form_state);
-}
-
-/**
- * Processes a form submission.
- *
- * @deprecated in Drupal 8.x-dev, will be removed before Drupal 8.0.
- *   Use \Drupal::formBuilder()->processForm().
- *
- * @see \Drupal\Core\Form\FormBuilderInterface::processForm().
- */
-function drupal_process_form($form_id, &$form, FormStateInterface $form_state) {
-  \Drupal::formBuilder()->processForm($form_id, $form, $form_state);
-}
-
-/**
- * Executes custom validation and submission handlers for a given form.
- *
- * @deprecated in Drupal 8.x-dev, will be removed before Drupal 8.0.
- *   Use either \Drupal::service('form_submitter')->executeSubmitHandlers() or
- *   \Drupal::service('form_validator')->executeValidateHandlers().
- *
- * @see \Drupal\Core\Form\FormSubmitterInterface::executeSubmitHandlers()
- * @see \Drupal\Core\Form\FormValidatorInterface::executeValidateHandlers()
- */
-function form_execute_handlers($type, &$form, FormStateInterface $form_state) {
-  if ($type == 'submit') {
-    \Drupal::service('form_submitter')->executeSubmitHandlers($form, $form_state);
-  }
-  elseif ($type == 'validate') {
-    \Drupal::service('form_validator')->executeValidateHandlers($form, $form_state);
-  }
-}
-
-/**
- * Removes internal Form API elements and buttons from submitted form values.
- *
- * @deprecated in Drupal 8.x-dev, will be removed before Drupal 8.0.0.
- *   Use $form_state->cleanValues().
- */
-function form_state_values_clean(FormStateInterface $form_state) {
-  $form_state->cleanValues();
-}
-
-/**
- * Changes submitted form values during form validation.
- *
- * @deprecated in Drupal 8.x-dev, will be removed before Drupal 8.0.
- *   Use $form_state->setValueForElement().
- *
- * @see \Drupal\Core\Form\FormStateInterface::setValueForElement().
- */
-function form_set_value($element, $value, FormStateInterface $form_state) {
-  $form_state->setValueForElement($element, $value);
-}
-
-/**
- * Allows PHP array processing of multiple select options with the same value.
- *
- * Used for form select elements which need to validate HTML option groups
- * and multiple options which may return the same value. Associative PHP arrays
- * cannot handle these structures, since they share a common key.
- *
- * @param $array
- *   The form options array to process.
- *
- * @return
- *   An array with all hierarchical elements flattened to a single array.
- *
- * @deprecated in Drupal 8.x-dev, will be removed before Drupal 8.0.
- *   Use \Drupal\Core\Form\OptGroup::flattenOptions().
- */
-function form_options_flatten($array) {
-  return OptGroup::flattenOptions($array);
 }
 
 /**
@@ -548,7 +476,7 @@ function template_preprocess_form_element(&$variables) {
  *
  * Form element labels include the #title and a #required marker. The label is
  * associated with the element itself by the element #id. Labels may appear
- * before or after elements, depending on theme_form_element() and
+ * before or after elements, depending on form-element.html.twig and
  * #title_display.
  *
  * This function will not be called for elements with no labels, depending on
@@ -685,11 +613,11 @@ function template_preprocess_form_element_label(&$variables) {
  *
  * Sample callback_batch_finished():
  * @code
- * function batch_test_finished($success, $results, $operations) {
+ * function my_finished_callback($success, $results, $operations) {
  *   // The 'success' parameter means no fatal PHP errors were detected. All
  *   // other error management should be handled using 'results'.
  *   if ($success) {
- *     $message = format_plural(count($results), 'One post processed.', '@count posts processed.');
+ *     $message = \Drupal::translation()->formatPlural(count($results), 'One post processed.', '@count posts processed.');
  *   }
  *   else {
  *     $message = t('Finished with an error.');
@@ -817,9 +745,10 @@ function batch_set($batch_definition) {
  * This function is generally not needed in form submit handlers;
  * Form API takes care of batches that were set during form submission.
  *
- * @param $redirect
- *   (optional) Path to redirect to when the batch has finished processing.
- * @param $url
+ * @param \Drupal\Core\Url|string $redirect
+ *   (optional) Either path or Url object to redirect to when the batch has
+ *   finished processing.
+ * @param \Drupal\Core\Url $url
  *   (optional - should only be used for separate scripts like update.php)
  *   URL of the batch processing page.
  * @param $redirect_callback
@@ -829,7 +758,7 @@ function batch_set($batch_definition) {
  * @return \Symfony\Component\HttpFoundation\RedirectResponse|null
  *   A redirect response if the batch is progressive. No return value otherwise.
  */
-function batch_process($redirect = NULL, $url = 'batch', $redirect_callback = NULL) {
+function batch_process($redirect = NULL, Url $url = NULL, $redirect_callback = NULL) {
   $batch =& batch_get();
 
   if (isset($batch)) {
@@ -837,9 +766,8 @@ function batch_process($redirect = NULL, $url = 'batch', $redirect_callback = NU
     $process_info = array(
       'current_set' => 0,
       'progressive' => TRUE,
-      'url' => $url,
-      'url_options' => array(),
-      'source_url' => current_path(),
+      'url' => isset($url) ? $url : Url::fromRoute('system.batch_page.html'),
+      'source_url' => Url::fromRouteMatch(\Drupal::routeMatch()),
       'batch_redirect' => $redirect,
       'theme' => \Drupal::theme()->getActiveTheme()->getName(),
       'redirect_callback' => $redirect_callback,
@@ -865,7 +793,16 @@ function batch_process($redirect = NULL, $url = 'batch', $redirect_callback = NU
     if ($batch['progressive']) {
       // Now that we have a batch id, we can generate the redirection link in
       // the generic error message.
-      $batch['error_message'] = t('Please continue to <a href="@error_url">the error page</a>', array('@error_url' => _url($url, array('query' => array('id' => $batch['id'], 'op' => 'finished')))));
+      /** @var \Drupal\Core\Url $batch_url */
+      $batch_url = $batch['url'];
+      /** @var \Drupal\Core\Url $error_url */
+      $error_url = clone $batch_url;
+      $query_options = $error_url->getOption('query');
+      $query_options['id'] = $batch['id'];
+      $query_options['op'] = 'finished';
+      $error_url->setOption('query', $query_options);
+
+      $batch['error_message'] = t('Please continue to <a href="@error_url">the error page</a>', array('@error_url' => $error_url->toString()));
 
       // Clear the way for the redirection to the batch processing page, by
       // saving and unsetting the 'destination', if there is any.
@@ -887,13 +824,15 @@ function batch_process($redirect = NULL, $url = 'batch', $redirect_callback = NU
       $_SESSION['batches'][$batch['id']] = TRUE;
 
       // Redirect for processing.
-      $options = array('query' => array('op' => 'start', 'id' => $batch['id']));
+      $query_options = $error_url->getOption('query');
+      $query_options['op'] = 'start';
+      $query_options['id'] = $batch['id'];
+      $batch_url->setOption('query', $query_options);
       if (($function = $batch['redirect_callback']) && function_exists($function)) {
-        $function($batch['url'], $options);
+        $function($batch_url->toString(), ['query' => $query_options]);
       }
       else {
-        $options['absolute'] = TRUE;
-        return new RedirectResponse(_url($batch['url'], $options));
+        return new RedirectResponse($batch_url->setAbsolute()->toString());
       }
     }
     else {

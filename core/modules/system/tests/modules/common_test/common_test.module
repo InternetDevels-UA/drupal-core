@@ -5,6 +5,8 @@
  * Helper module for the Common tests.
  */
 
+use \Drupal\Core\Asset\AttachedAssetsInterface;
+
 /**
  * Applies #printed to an element to help test #pre_render.
  */
@@ -165,6 +167,24 @@ function common_test_preprocess_common_test_render_element(&$variables) {
 }
 
 /**
+ * Implements hook_library_info_build().
+ */
+function common_test_library_info_build() {
+  $libraries = [];
+  if (\Drupal::state()->get('common_test.library_info_build_test')) {
+    $libraries['dynamic_library'] = [
+      'version' => '1.0',
+      'css' => [
+        'base' => [
+          'common_test.css' => [],
+        ],
+      ],
+    ];
+  }
+  return $libraries;
+}
+
+/**
  * Implements hook_library_info_alter().
  */
 function common_test_library_info_alter(&$libraries, $module) {
@@ -173,6 +193,13 @@ function common_test_library_info_alter(&$libraries, $module) {
     $libraries['jquery.farbtastic']['version'] = '0.0';
     // Make Farbtastic depend on jQuery Form to test library dependencies.
     $libraries['jquery.farbtastic']['dependencies'][] = 'core/jquery.form';
+  }
+
+  // Alter the dynamically registered library definition.
+  if ($module == 'common_test' && isset($libraries['dynamic_library'])) {
+    $libraries['dynamic_library']['dependencies'] = [
+      'core/jquery',
+    ];
   }
 }
 
@@ -190,77 +217,13 @@ function common_test_cron() {
 }
 
 /**
- * #post_render_cache callback; modifies #markup, #attached and #context_test.
- *
- * @param array $element
- *  A render array with the following keys:
- *    - #markup
- *    - #attached
- * @param array $context
- *  An array with the following keys:
- *    - foo: contains a random string.
- *
- * @return array $element
- *   The updated $element.
- */
-function common_test_post_render_cache(array $element, array $context) {
-  // Override #markup.
-  $element['#markup'] = '<p>overridden</p>';
-
-  // Extend #attached.
-  $element['#attached']['js'][] = array(
-    'type' => 'setting',
-    'data' => array(
-      'common_test' => $context
-    ),
-  );
-
-  // Set new property.
-  $element['#context_test'] = $context;
-
-  return $element;
-}
-
-/**
- * #post_render_cache callback; replaces placeholder, extends #attached.
- *
- * @param array $element
- *   The renderable array that contains the to be replaced placeholder.
- * @param array $context
- *  An array with the following keys:
- *    - bar: contains a random string.
- *
- * @return array
- *   A render array.
- */
-function common_test_post_render_cache_placeholder(array $element, array $context) {
-  $placeholder = drupal_render_cache_generate_placeholder(__FUNCTION__, $context);
-  $replace_element = array(
-    '#markup' => '<bar>' . $context['bar'] . '</bar>',
-    '#attached' => array(
-      'js' => array(
-        array(
-          'type' => 'setting',
-          'data' => array(
-            'common_test' => $context,
-          ),
-        ),
-      ),
-    ),
-  );
-  $markup = drupal_render($replace_element);
-  $element['#markup'] = str_replace($placeholder, $markup, $element['#markup']);
-
-  return $element;
-}
-
-/**
  * Implements hook_page_attachments().
  *
  * @see \Drupal\system\Tests\Common\PageRenderTest::assertPageRenderHookExceptions()
  */
 function common_test_page_attachments(array &$page) {
-  $page['#attached']['library'][] = 'core/jquery';
+  $page['#attached']['library'][] = 'core/foo';
+  $page['#attached']['library'][] = 'core/bar';
 
   if (\Drupal::state()->get('common_test.hook_page_attachments.descendant_attached', FALSE)) {
     $page['content']['#attached']['library'][] = 'core/jquery';
@@ -279,7 +242,12 @@ function common_test_page_attachments(array &$page) {
  * @see \Drupal\system\Tests\Common\PageRenderTest::assertPageRenderHookExceptions()
  */
 function common_test_page_attachments_alter(array &$page) {
-  $page['#attached']['library'][] = 'core/jquery';
+  // Remove a library that was added in common_test_page_attachments(), to test
+  // that this hook can do what it claims to do.
+  if (isset($page['#attached']['library']) && ($index = array_search('core/bar', $page['#attached']['library'])) && $index !== FALSE) {
+    unset($page['#attached']['library'][$index]);
+  }
+  $page['#attached']['library'][] = 'core/baz';
 
   if (\Drupal::state()->get('common_test.hook_page_attachments_alter.descendant_attached', FALSE)) {
     $page['content']['#attached']['library'][] = 'core/jquery';
@@ -290,4 +258,19 @@ function common_test_page_attachments_alter(array &$page) {
       '#markup' => 'test',
     ];
   }
+}
+
+/**
+ * Implements hook_js_settings_alter().
+ *
+ * @see \Drupal\system\Tests\Common\JavaScriptTest::testHeaderSetting()
+ */
+function common_test_js_settings_alter(&$settings, AttachedAssetsInterface $assets) {
+  // Modify an existing setting.
+  if (array_key_exists('pluralDelimiter', $settings)) {
+    $settings['pluralDelimiter'] = '☃';
+  }
+
+  // Add a setting.
+  $settings['foo'] = 'bar';
 }

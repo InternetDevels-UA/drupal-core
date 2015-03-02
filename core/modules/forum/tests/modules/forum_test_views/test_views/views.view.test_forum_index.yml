@@ -1,8 +1,14 @@
-base_field: nid
-base_table: forum_index
-core: 8.x
-description: ''
+langcode: en
 status: true
+dependencies: {  }
+id: test_forum_index
+label: test_forum_index
+module: views
+description: ''
+tag: ''
+base_table: forum_index
+base_field: nid
+core: 8.x
 display:
   default:
     display_plugin: default
@@ -55,7 +61,7 @@ display:
             suffix: ''
             target: ''
             nl2br: false
-            max_length: ''
+            max_length: 0
             word_boundary: true
             ellipsis: true
             more_link: false
@@ -108,7 +114,7 @@ display:
             suffix: ''
             target: ''
             nl2br: false
-            max_length: ''
+            max_length: 0
             word_boundary: true
             ellipsis: true
             more_link: false
@@ -131,7 +137,7 @@ display:
           empty_zero: false
           hide_alter_empty: true
           set_precision: false
-          precision: false
+          precision: 0
           decimal: .
           separator: ','
           format_plural: false
@@ -142,8 +148,3 @@ display:
           plugin_id: numeric
       filters: {  }
       sorts: {  }
-label: test_forum_index
-module: views
-id: test_forum_index
-tag: ''
-langcode: en

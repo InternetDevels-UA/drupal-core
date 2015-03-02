@@ -7,6 +7,7 @@
 
 namespace Drupal\filter\Entity;
 
+use Drupal\Component\Plugin\PluginInspectionInterface;
 use Drupal\Core\Config\Entity\ConfigEntityBase;
 use Drupal\Core\Entity\EntityWithPluginCollectionInterface;
 use Drupal\Core\Entity\EntityStorageInterface;
@@ -38,8 +39,8 @@ use Drupal\filter\Plugin\FilterInterface;
  *     "status" = "status"
  *   },
  *   links = {
- *     "edit-form" = "entity.filter_format.edit_form",
- *     "disable" = "entity.filter_format.disable"
+ *     "edit-form" = "/admin/config/content/formats/manage/{filter_format}",
+ *     "disable" = "/admin/config/content/formats/manage/{filter_format}/disable"
  *   }
  * )
  */
@@ -52,7 +53,7 @@ class FilterFormat extends ConfigEntityBase implements FilterFormatInterface, En
    *
    * @var string
    */
-  public $format;
+  protected $format;
 
   /**
    * Unique label of the text format.
@@ -65,7 +66,7 @@ class FilterFormat extends ConfigEntityBase implements FilterFormatInterface, En
    *
    * @var string
    */
-  public $name;
+  protected $name;
 
   /**
    * Weight of this format in the text format selector.
@@ -75,7 +76,7 @@ class FilterFormat extends ConfigEntityBase implements FilterFormatInterface, En
    *
    * @var int
    */
-  public $weight = 0;
+  protected $weight = 0;
 
   /**
    * List of user role IDs to grant access to use this format on initial creation.
@@ -98,7 +99,7 @@ class FilterFormat extends ConfigEntityBase implements FilterFormatInterface, En
    * An associative array of filters assigned to the text format, keyed by the
    * instance ID of each filter and using the properties:
    * - id: The plugin ID of the filter plugin instance.
-   * - module: The name of the module providing the filter.
+   * - provider: The name of the provider that owns the filter.
    * - status: (optional) A Boolean indicating whether the filter is
    *   enabled in the text format. Defaults to FALSE.
    * - weight: (optional) The weight of the filter in the text format. Defaults
@@ -384,6 +385,44 @@ class FilterFormat extends ConfigEntityBase implements FilterFormatInterface, En
       }
 
       return $restrictions;
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function removeFilter($instance_id) {
+    unset($this->filters[$instance_id]);
+    $this->filterCollection->removeInstanceId($instance_id);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function onDependencyRemoval(array $dependencies) {
+    $changed = parent::onDependencyRemoval($dependencies);
+    $filters = $this->filters();
+    foreach ($filters as $filter) {
+      // Remove disabled filters, so that this FilterFormat config entity can
+      // continue to exist.
+      if (!$filter->status && in_array($filter->provider, $dependencies['module'])) {
+        $this->removeFilter($filter->getPluginId());
+        $changed = TRUE;
+      }
+    }
+    return $changed;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  protected function calculatePluginDependencies(PluginInspectionInterface $instance) {
+    // Only add dependencies for plugins that are actually configured. This is
+    // necessary because the filter plugin collection will return all available
+    // filter plugins.
+    // @see \Drupal\filter\FilterPluginCollection::getConfiguration()
+    if (isset($this->filters[$instance->getPluginId()])) {
+      parent::calculatePluginDependencies($instance);
     }
   }
 

@@ -17,7 +17,7 @@ use Drupal\Core\Utility\Error;
  * Disables any extensions that are incompatible with the current core version.
  */
 function update_fix_compatibility() {
-  $extension_config = \Drupal::config('core.extension');
+  $extension_config = \Drupal::configFactory()->getEditable('core.extension');
   $save = FALSE;
   foreach (array('module', 'theme') as $type) {
     foreach ($extension_config->get($type) as $name => $weight) {
@@ -64,34 +64,6 @@ function update_check_incompatibility($name, $type = 'module') {
 }
 
 /**
- * Returns whether the settings file requirement has been satisfied.
- *
- * @return array
- *  A requirements info array.
- */
-function update_settings_file_requirements() {
-  $requirements = array();
-
-  // Check whether settings.php needs to be rewritten.
-  $settings_file = conf_path() . '/settings.php';
-  $writable = drupal_verify_install_file($settings_file, FILE_EXIST | FILE_READABLE | FILE_WRITABLE);
-  $requirements['settings file']['title'] = 'Settings file';
-  if ($writable) {
-    $requirements['settings file'] += array(
-      'value' => 'settings.php is writable.',
-    );
-  }
-  else {
-    $requirements['settings file'] += array(
-      'value' => 'settings.php is not writable.',
-      'severity' => REQUIREMENT_ERROR,
-      'description' => 'Drupal requires write permissions to <em>' . $settings_file . '</em> during the update process. If you are unsure how to grant file permissions, consult the <a href="http://drupal.org/server-permissions">online handbook</a>.',
-    );
-  }
-  return $requirements;
-}
-
-/**
  * Returns whether the minimum schema requirement has been satisfied.
  *
  * @return array
@@ -127,7 +99,6 @@ function update_check_requirements() {
   // Check requirements of all loaded modules.
   $requirements = \Drupal::moduleHandler()->invokeAll('requirements', array('update'));
   $requirements += update_system_schema_requirements();
-  $requirements += update_settings_file_requirements();
   return $requirements;
 }
 
@@ -150,6 +121,8 @@ function update_set_schema($module, $schema_version) {
 }
 
 /**
+ * Implements callback_batch_operation().
+ *
  * Performs one update and stores the results for display on the results page.
  *
  * If an update function completes successfully, it should return a message

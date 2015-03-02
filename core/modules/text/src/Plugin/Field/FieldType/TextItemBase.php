@@ -23,7 +23,8 @@ abstract class TextItemBase extends FieldItemBase {
    */
   public static function propertyDefinitions(FieldStorageDefinitionInterface $field_definition) {
     $properties['value'] = DataDefinition::create('string')
-      ->setLabel(t('Text'));
+      ->setLabel(t('Text'))
+      ->setRequired(TRUE);
 
     $properties['format'] = DataDefinition::create('filter_format')
       ->setLabel(t('Text format'));
@@ -59,20 +60,16 @@ abstract class TextItemBase extends FieldItemBase {
   /**
    * {@inheritdoc}
    */
-  public function onChange($property_name) {
-    // Notify the parent of changes.
-    if (isset($this->parent)) {
-      $this->parent->onChange($this->name);
-    }
-
+  public function onChange($property_name, $notify = TRUE) {
     // Unset processed properties that are affected by the change.
     foreach ($this->definition->getPropertyDefinitions() as $property => $definition) {
       if ($definition->getClass() == '\Drupal\text\TextProcessed') {
         if ($property_name == 'format' || ($definition->getSetting('text source') == $property_name)) {
-          $this->set($property, NULL, FALSE);
+          $this->writePropertyValue($property, NULL);
         }
       }
     }
+    parent::onChange($property_name, $notify);
   }
 
   /**

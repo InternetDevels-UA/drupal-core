@@ -81,7 +81,7 @@ function template_preprocess_admin_block_content(&$variables) {
  */
 function template_preprocess_admin_page(&$variables) {
   $variables['system_compact_link'] = array(
-    '#theme' => 'system_compact_link',
+    '#type' => 'system_compact_link',
   );
   $variables['containers'] = array();
   $stripe = 0;
@@ -110,7 +110,7 @@ function template_preprocess_admin_page(&$variables) {
  */
 function template_preprocess_system_admin_index(&$variables) {
   $variables['system_compact_link'] = array(
-    '#theme' => 'system_compact_link',
+    '#type' => 'system_compact_link',
   );
   $variables['containers'] = array();
   $stripe = 0;
@@ -235,7 +235,7 @@ function theme_system_modules_details($variables) {
     // Add the description, along with any modules it requires.
     $description = '';
     $description .= '<div class="requirements">';
-    $description .= '<div class="admin-requirements">' . t('Machine name: !key', array('!key' => $key)) . '</div>';
+    $description .= '<div class="admin-requirements">' . t('Machine name: !machine-name', array('!machine-name' => '<span dir="ltr" class="table-filter-text-source">' . $key . '</span>')) . '</div>';
     if ($version || $requires || $required_by) {
       if ($version) {
         $description .= '<div class="admin-requirements">' . t('Version: !module-version', array('!module-version' => drupal_render($module['version']))) . '</div>';
@@ -249,8 +249,8 @@ function theme_system_modules_details($variables) {
     }
     $description .= '</div>';
     $links = '';
-    foreach (array('help', 'permissions', 'configure') as $key) {
-      $links .= drupal_render($module['links'][$key]);
+    foreach (array('help', 'permissions', 'configure') as $link_type) {
+      $links .= drupal_render($module['links'][$link_type]);
     }
     if ($links) {
       $description .= '  <div class="links">';
@@ -303,14 +303,16 @@ function theme_system_modules_uninstall($variables) {
   // Display table.
   $rows = array();
   foreach (Element::children($form['modules']) as $module) {
+    $disabled_message = '';
+    // Add the modules requiring the module in question as a validation reason.
     if (!empty($form['modules'][$module]['#required_by'])) {
-      $disabled_message = format_plural(count($form['modules'][$module]['#required_by']),
-        'To uninstall @module, the following module must be uninstalled first: @required_modules',
-        'To uninstall @module, the following modules must be uninstalled first: @required_modules',
-        array('@module' => $form['modules'][$module]['#module_name'], '@required_modules' => implode(', ', $form['modules'][$module]['#required_by'])));
+      $form['modules'][$module]['#validation_reasons'][] = \Drupal::translation()->translate('Required by: @modules', array('@modules' => implode(', ',$form['modules'][$module]['#required_by'])));
     }
-    else {
-      $disabled_message = '';
+    if (!empty($form['modules'][$module]['#validation_reasons'])) {
+      $disabled_message = \Drupal::translation()->formatPlural(count($form['modules'][$module]['#validation_reasons']),
+        'The following reason prevents @module from being uninstalled: @reasons',
+        'The following reasons prevents @module from being uninstalled: @reasons',
+        array('@module' => $form['modules'][$module]['#module_name'], '@reasons' => implode('; ', $form['modules'][$module]['#validation_reasons'])));
     }
     $rows[] = array(
       array('data' => drupal_render($form['uninstall'][$module]), 'align' => 'center'),

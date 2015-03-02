@@ -48,7 +48,7 @@ class ThemeTest extends WebTestBase {
     // Specify a filesystem path to be used for the logo.
     $file = current($this->drupalGetTestFiles('image'));
     $file_relative = strtr($file->uri, array('public:/' => PublicStream::basePath()));
-    $default_theme_path = 'core/themes/stark';
+    $default_theme_path = 'core/themes/classy';
 
     $supported_paths = array(
       // Raw stream wrapper URI.
@@ -72,9 +72,9 @@ class ThemeTest extends WebTestBase {
         'src' => $GLOBALS['base_url'] . '/' . 'core/misc/druplicon.png',
       ),
       // Relative path to a file in a theme.
-      $default_theme_path . '/logo.png' => array(
-        'form' => $default_theme_path . '/logo.png',
-        'src' => $GLOBALS['base_url'] . '/' . $default_theme_path . '/logo.png',
+      $default_theme_path . '/logo.svg' => array(
+        'form' => $default_theme_path . '/logo.svg',
+        'src' => $GLOBALS['base_url'] . '/' . $default_theme_path . '/logo.svg',
       ),
     );
     foreach ($supported_paths as $input => $expected) {
@@ -92,9 +92,9 @@ class ThemeTest extends WebTestBase {
         ':description' => 'description',
       ));
       // Expected default values (if all else fails).
-      $implicit_public_file = 'logo.png';
-      $explicit_file = 'public://logo.png';
-      $local_file = $default_theme_path . '/logo.png';
+      $implicit_public_file = 'logo.svg';
+      $explicit_file = 'public://logo.svg';
+      $local_file = $default_theme_path . '/logo.svg';
       // Adjust for fully qualified stream wrapper URI in public filesystem.
       if (file_uri_scheme($input) == 'public') {
         $implicit_public_file = file_uri_target($input);
@@ -192,7 +192,7 @@ class ThemeTest extends WebTestBase {
     $this->assertRaw('core/themes/seven', 'Administration theme used on an administration page.');
 
     $this->drupalGet('node/' . $this->node->id());
-    $this->assertRaw('core/themes/stark', 'Site default theme used on node page.');
+    $this->assertRaw('core/themes/classy', 'Site default theme used on node page.');
 
     $this->drupalGet('node/add');
     $this->assertRaw('core/themes/seven', 'Administration theme used on the add content page.');
@@ -218,7 +218,7 @@ class ThemeTest extends WebTestBase {
     $this->drupalLogin($this->admin_user);
 
     $this->drupalGet('node/add');
-    $this->assertRaw('core/themes/stark', 'Site default theme used on the add content page.');
+    $this->assertRaw('core/themes/classy', 'Site default theme used on the add content page.');
 
     // Reset to the default theme settings.
     $edit = array(
@@ -228,10 +228,10 @@ class ThemeTest extends WebTestBase {
     $this->drupalPostForm('admin/appearance', $edit, t('Save configuration'));
 
     $this->drupalGet('admin');
-    $this->assertRaw('core/themes/stark', 'Site default theme used on administration page.');
+    $this->assertRaw('core/themes/classy', 'Site default theme used on administration page.');
 
     $this->drupalGet('node/add');
-    $this->assertRaw('core/themes/stark', 'Site default theme used on the add content page.');
+    $this->assertRaw('core/themes/classy', 'Site default theme used on the add content page.');
   }
 
   /**
@@ -242,17 +242,17 @@ class ThemeTest extends WebTestBase {
     \Drupal::service('theme_handler')->install(array('bartik'));
     $this->drupalGet('admin/appearance');
     $this->clickLink(t('Set as default'));
-    $this->assertEqual(\Drupal::config('system.theme')->get('default'), 'bartik');
+    $this->assertEqual($this->config('system.theme')->get('default'), 'bartik');
 
     // Test the default theme on the secondary links (blocks admin page).
     $this->drupalGet('admin/structure/block');
     $this->assertText('Bartik(' . t('active tab') . ')', 'Default local task on blocks admin page is the default theme.');
     // Switch back to Stark and test again to test that the menu cache is cleared.
     $this->drupalGet('admin/appearance');
-    // Stark is the second 'Set as default' link.
-    $this->clickLink(t('Set as default'), 1);
+    // Classy is the first 'Set as default' link.
+    $this->clickLink(t('Set as default'), 0);
     $this->drupalGet('admin/structure/block');
-    $this->assertText('Stark(' . t('active tab') . ')', 'Default local task on blocks admin page has changed.');
+    $this->assertText('Classy(' . t('active tab') . ')', 'Default local task on blocks admin page has changed.');
   }
 
   /**
@@ -260,7 +260,7 @@ class ThemeTest extends WebTestBase {
    */
   function testInvalidTheme() {
     // theme_page_test_system_info_alter() un-hides all hidden themes.
-    $this->container->get('module_handler')->install(array('theme_page_test'));
+    $this->container->get('module_installer')->install(array('theme_page_test'));
     // Clear the system_list() and theme listing cache to pick up the change.
     $this->container->get('theme_handler')->reset();
     $this->drupalGet('admin/appearance');

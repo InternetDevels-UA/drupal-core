@@ -1,8 +1,16 @@
-base_table: views_test_data
+langcode: und
+status: true
+dependencies:
+  module:
+    - rest
+    - user
 id: test_serializer_display_field
+label: 'Test serializer display field rows'
+module: rest
 description: ''
 tag: ''
-label: 'Test serializer display field rows'
+base_table: views_test_data
+base_field: id
 core: 8.x
 display:
   default:
@@ -95,10 +103,3 @@ display:
         type: serializer
       row:
         type: data_field
-base_field: id
-status: true
-module: rest
-langcode: und
-dependencies:
-  module:
-    - rest

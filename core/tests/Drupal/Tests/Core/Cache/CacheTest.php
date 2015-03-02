@@ -53,7 +53,8 @@ class CacheTest extends UnitTestCase {
     if ($expected_exception_message !== FALSE) {
       $this->setExpectedException('LogicException', $expected_exception_message);
     }
-    Cache::validateTags($tags);
+    // If it doesn't throw an exception, validateTags() returns NULL.
+    $this->assertNull(Cache::validateTags($tags));
   }
 
   /**
@@ -104,6 +105,8 @@ class CacheTest extends UnitTestCase {
       ['node', [5 => NULL], ['node:']],
       ['node', ['a' => NULL], ['node:']],
       ['node', ['a' => TRUE], ['node:1']],
+      // Test the $glue parameter.
+      ['config:system.menu', ['menu_name'], ['config:system.menu.menu_name'], '.'],
     ];
   }
 
@@ -112,28 +115,8 @@ class CacheTest extends UnitTestCase {
    *
    * @dataProvider buildTagsProvider
    */
-  public function testBuildTags($prefix, array $suffixes, array $expected) {
-    $this->assertEquals($expected, Cache::buildTags($prefix, $suffixes));
-  }
-
-  /**
-   * @covers ::deleteTags
-   *
-   * @expectedException \LogicException
-   * @expectedExceptionMessage Cache tags must be strings, array given.
-   */
-  public function testDeleteTags() {
-    Cache::deleteTags(['node' => [2, 3, 5, 8, 13]]);
-  }
-
-  /**
-   * @covers ::invalidateTags
-   *
-   * @expectedException \LogicException
-   * @expectedExceptionMessage Cache tags must be strings, array given.
-   */
-  public function testInvalidateTags() {
-    Cache::invalidateTags(['node' => [2, 3, 5, 8, 13]]);
+  public function testBuildTags($prefix, array $suffixes, array $expected, $glue = ':') {
+    $this->assertEquals($expected, Cache::buildTags($prefix, $suffixes, $glue));
   }
 
 }

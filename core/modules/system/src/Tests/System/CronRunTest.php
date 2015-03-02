@@ -54,7 +54,7 @@ class CronRunTest extends WebTestBase {
     $cron_last = time();
     $cron_safe_threshold = 100;
     \Drupal::state()->set('system.cron_last', $cron_last);
-    \Drupal::config('system.cron')
+    $this->config('system.cron')
       ->set('threshold.autorun', $cron_safe_threshold)
       ->save();
     $this->drupalGet('');
@@ -105,5 +105,21 @@ class CronRunTest extends WebTestBase {
     // fail randomly. Look for the word 'years', because without a timestamp,
     // the time will start at 1 January 1970.
     $this->assertNoText('years');
+  }
+
+  /**
+   * Ensure that the manual cron run is working.
+   */
+  public function testManualCron() {
+    $admin_user = $this->drupalCreateUser(array('administer site configuration'));
+    $this->drupalLogin($admin_user);
+
+    $this->drupalGet('admin/reports/status/run-cron');
+    $this->assertResponse(403);
+
+    $this->drupalGet('admin/reports/status');
+    $this->clickLink(t('run cron manually'));
+    $this->assertResponse(200);
+    $this->assertText(t('Cron ran successfully.'));
   }
 }

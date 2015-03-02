@@ -7,6 +7,7 @@
 
 namespace Drupal\dblog\Controller;
 
+use Drupal\Component\Utility\Html;
 use Drupal\Component\Utility\Unicode;
 use Drupal\Component\Utility\String;
 use Drupal\Component\Utility\Xss;
@@ -199,7 +200,7 @@ class DbLogController extends ControllerBase {
           Xss::filter($dblog->link),
         ),
         // Attributes for table row.
-        'class' => array(drupal_html_class('dblog-' . $dblog->type), $classes[$dblog->severity]),
+        'class' => array(Html::getClass('dblog-' . $dblog->type), $classes[$dblog->severity]),
       );
     }
 
@@ -254,11 +255,11 @@ class DbLogController extends ControllerBase {
         ),
         array(
           array('data' => $this->t('Location'), 'header' => TRUE),
-          $this->l($dblog->location, $dblog->location ? Url::fromUri('base://' . $dblog->location) : Url::fromRoute('<none>')),
+          $this->l($dblog->location, $dblog->location ? Url::fromUri($dblog->location) : Url::fromRoute('<none>')),
         ),
         array(
           array('data' => $this->t('Referrer'), 'header' => TRUE),
-          $this->l($dblog->referer, $dblog->referer ? Url::fromUri('base://' . $dblog->referer) : Url::fromRoute('<none>')),
+          $this->l($dblog->referer, $dblog->referer ? Url::fromUri($dblog->referer) : Url::fromRoute('<none>')),
         ),
         array(
           array('data' => $this->t('Message'), 'header' => TRUE),

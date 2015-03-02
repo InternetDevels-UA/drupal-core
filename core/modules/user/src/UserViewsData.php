@@ -277,16 +277,24 @@ class UserViewsData extends EntityViewsData {
       ),
     );
 
-    $data['users_roles']['table']['group']  = t('User');
-
-    $data['users_roles']['table']['join'] = array(
-      'users' => array(
-        'left_field' => 'uid',
-        'field' => 'uid',
+    $data['users']['user_bulk_form'] = array(
+      'title' => t('Bulk update'),
+      'help' => t('Add a form element that lets you run operations on multiple users.'),
+      'field' => array(
+        'id' => 'user_bulk_form',
       ),
     );
 
-    $data['users_roles']['rid'] = array(
+    $data['user__roles']['table']['group']  = t('User');
+
+    $data['user__roles']['table']['join'] = array(
+      'users' => array(
+        'left_field' => 'uid',
+        'field' => 'entity_id',
+      ),
+    );
+
+    $data['user__roles']['roles_target_id'] = array(
       'title' => t('Roles'),
       'help' => t('Roles that a user belongs to.'),
       'field' => array(
@@ -298,7 +306,7 @@ class UserViewsData extends EntityViewsData {
         'allow empty' => TRUE,
       ),
       'argument' => array(
-        'id' => 'users_roles_rid',
+        'id' => 'user__roles_target_id',
         'name table' => 'role',
         'name field' => 'name',
         'empty field name' => t('No role'),
@@ -307,7 +315,7 @@ class UserViewsData extends EntityViewsData {
       ),
     );
 
-    $data['users_roles']['permission'] = array(
+    $data['user__roles']['permission'] = array(
       'title' => t('Permission'),
       'help' => t('The user permissions.'),
       'field' => array(
@@ -316,7 +324,7 @@ class UserViewsData extends EntityViewsData {
       ),
       'filter' => array(
         'id' => 'user_permissions',
-        'real field' => 'rid',
+        'real field' => 'roles_target_id',
       ),
     );
 

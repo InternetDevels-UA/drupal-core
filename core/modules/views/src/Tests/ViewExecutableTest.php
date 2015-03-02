@@ -7,6 +7,7 @@
 
 namespace Drupal\views\Tests;
 
+use Drupal\comment\Tests\CommentTestTrait;
 use Drupal\views\Views;
 use Drupal\views\ViewExecutable;
 use Drupal\views\ViewExecutableFactory;
@@ -30,7 +31,9 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class ViewExecutableTest extends ViewUnitTestBase {
 
-  public static $modules = array('system', 'node', 'comment', 'user', 'filter', 'entity', 'field', 'text', 'entity_reference');
+  use CommentTestTrait;
+
+  public static $modules = array('system', 'node', 'comment', 'user', 'filter', 'field', 'text', 'entity_reference');
 
   /**
    * Views used by this test.
@@ -86,7 +89,7 @@ class ViewExecutableTest extends ViewUnitTestBase {
       'type' => 'page',
       'name' => 'Page',
     ))->save();
-    $this->container->get('comment.manager')->addDefaultField('node', 'page');
+    $this->addDefaultCommentField('node', 'page');
     parent::setUpFixtures();
 
     $this->installConfig(array('filter'));
@@ -309,11 +312,6 @@ class ViewExecutableTest extends ViewUnitTestBase {
     $view->setResponse($new_response);
     $this->assertIdentical(spl_object_hash($view->getResponse()), spl_object_hash($new_response), 'New response object correctly set.');
 
-    // Test the generateHandlerId() method.
-    $test_ids = array('test' => 'test', 'test_1' => 'test_1');
-    $this->assertEqual($view->generateHandlerId('new', $test_ids), 'new');
-    $this->assertEqual($view->generateHandlerId('test', $test_ids), 'test_2');
-
     // Test the getPath() method.
     $path = $this->randomMachineName();
     $view->displayHandlers->get('page_1')->overrideOption('path', $path);
@@ -323,18 +321,6 @@ class ViewExecutableTest extends ViewUnitTestBase {
     $override_path = $this->randomMachineName();
     $view->override_path = $override_path;
     $this->assertEqual($view->getPath(), $override_path);
-
-    // Test the getUrl method().
-    $url = $this->randomString();
-    $this->assertEqual($view->getUrl(NULL, $url), $url);
-    // Test with arguments.
-    $arg1 = $this->randomString();
-    $arg2 = rand();
-    $this->assertEqual($view->getUrl(array($arg1, $arg2), $url), "$url/$arg1/$arg2");
-    // Test the override_url property override.
-    $override_url = $this->randomString();
-    $view->override_url = $override_url;
-    $this->assertEqual($view->getUrl(NULL, $url), $override_url);
 
     // Test the title methods.
     $title = $this->randomString();
@@ -404,6 +390,19 @@ class ViewExecutableTest extends ViewUnitTestBase {
         $this->assertEqual($types[$type]['plural'], $type . 's');
       }
     }
+  }
+
+  /**
+   * Tests ViewExecutable::getHandlers().
+   */
+  public function testGetHandlers() {
+    $view = Views::getView('test_executable_displays');
+    $view->setDisplay('page_1');
+
+    $view->getHandlers('field', 'page_2');
+
+    // getHandlers() shouldn't change the active display.
+    $this->assertEqual('page_1', $view->current_display, "The display shouldn't change after getHandlers()");
   }
 
   /**

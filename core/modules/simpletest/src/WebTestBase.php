@@ -27,6 +27,7 @@ use Drupal\Core\Site\Settings;
 use Drupal\Core\StreamWrapper\PublicStream;
 use Drupal\Core\Datetime\DrupalDateTime;
 use Drupal\block\Entity\Block;
+use Drupal\Core\Url;
 use Symfony\Component\HttpFoundation\Request;
 use Drupal\user\Entity\Role;
 
@@ -68,6 +69,13 @@ abstract class WebTestBase extends TestBase {
   protected $headers;
 
   /**
+   * The cookies of the page currently loaded in the internal browser.
+   *
+   * @var array
+   */
+  protected $cookies;
+
+  /**
    * Indicates that headers should be dumped if verbose output is enabled.
    *
    * Headers are dumped to verbose by drupalGet(), drupalHead(), and
@@ -83,6 +91,14 @@ abstract class WebTestBase extends TestBase {
    * @var \Drupal\Core\Session\AccountInterface|bool
    */
   protected $loggedInUser = FALSE;
+
+  /**
+   * The "#1" admin user.
+   *
+   * @var \Drupal\Core\Session\AccountInterface
+   */
+  protected $rootUser;
+
 
   /**
    * The current cookie file used by cURL.
@@ -101,6 +117,13 @@ abstract class WebTestBase extends TestBase {
   protected $additionalCurlOptions = array();
 
   /**
+   * The original batch, before it was changed for testing purposes.
+   *
+   * @var array
+   */
+  protected $originalBatch;
+
+  /**
    * The original user, before it was changed to a clean uid = 1 for testing.
    *
    * @var object
@@ -115,24 +138,14 @@ abstract class WebTestBase extends TestBase {
   protected $originalShutdownCallbacks = array();
 
   /**
-   * HTTP authentication method.
-   */
-  protected $httpauth_method = CURLAUTH_BASIC;
-
-  /**
-   * HTTP authentication credentials (<username>:<password>).
-   */
-  protected $httpauth_credentials = NULL;
-
-  /**
    * The current session name, if available.
    */
-  protected $session_name = NULL;
+  protected $sessionName = NULL;
 
   /**
    * The current session ID, if available.
    */
-  protected $session_id = NULL;
+  protected $sessionId = NULL;
 
   /**
    * Whether the files were copied to the test files directory.
@@ -147,7 +160,7 @@ abstract class WebTestBase extends TestBase {
   /**
    * The number of redirects followed during the handling of a request.
    */
-  protected $redirect_count;
+  protected $redirectCount;
 
   /**
    * The kernel used in this test.
@@ -275,6 +288,7 @@ abstract class WebTestBase extends TestBase {
     );
     $type = entity_create('node_type', $values);
     $status = $type->save();
+    node_add_body_field($type);
     \Drupal::service('router.builder')->rebuild();
 
     $this->assertEqual($status, SAVED_NEW, String::format('Created content type %type.', array('%type' => $type->id())));
@@ -373,7 +387,7 @@ abstract class WebTestBase extends TestBase {
       'plugin' => $plugin_id,
       'region' => 'sidebar_first',
       'id' => strtolower($this->randomMachineName(8)),
-      'theme' => \Drupal::config('system.theme')->get('default'),
+      'theme' => $this->config('system.theme')->get('default'),
       'label' => $this->randomMachineName(8),
       'visibility' => array(),
       'weight' => 0,
@@ -381,13 +395,14 @@ abstract class WebTestBase extends TestBase {
         'max_age' => 0,
       ),
     );
-    foreach (array('region', 'id', 'theme', 'plugin', 'weight') as $key) {
+    $values = [];
+    foreach (array('region', 'id', 'theme', 'plugin', 'weight', 'visibility') as $key) {
       $values[$key] = $settings[$key];
       // Remove extra values that do not belong in the settings array.
       unset($settings[$key]);
     }
-    foreach ($settings['visibility'] as $id => $visibility) {
-      $settings['visibility'][$id]['id'] = $id;
+    foreach ($values['visibility'] as $id => $visibility) {
+      $values['visibility'][$id]['id'] = $id;
     }
     $values['settings'] = $settings;
     $block = entity_create('block', $values);
@@ -676,8 +691,8 @@ abstract class WebTestBase extends TestBase {
     $this->drupalPostForm('user/login', $edit, t('Log in'));
 
     // @see WebTestBase::drupalUserIsLoggedIn()
-    if (isset($this->session_id)) {
-      $account->session_id = $this->session_id;
+    if (isset($this->sessionId)) {
+      $account->session_id = $this->sessionId;
     }
     $pass = $this->assert($this->drupalUserIsLoggedIn($account), format_string('User %name successfully logged in.', array('%name' => $account->getUsername())), 'User login');
     if ($pass) {
@@ -696,9 +711,17 @@ abstract class WebTestBase extends TestBase {
     if (!isset($account->session_id)) {
       return FALSE;
     }
-    // The session ID is hashed before being stored in the database.
-    // @see \Drupal\Core\Session\SessionHandler::read()
-    return (bool) db_query("SELECT sid FROM {users_field_data} u INNER JOIN {sessions} s ON u.uid = s.uid AND u.default_langcode = 1 WHERE s.sid = :sid", array(':sid' => Crypt::hashBase64($account->session_id)))->fetchField();
+    $session_id = $account->session_id;
+    $request_stack = $this->container->get('request_stack');
+    $request = $request_stack->getCurrentRequest();
+    $cookies = $request->cookies->all();
+    foreach ($this->cookies as $name => $value) {
+      $cookies[$name] = $value['value'];
+    }
+    $request_stack->push($request->duplicate(NULL, NULL, NULL, $cookies));
+    $logged_in = (bool) $this->container->get('session_manager')->getSaveHandler()->read($session_id);
+    $request_stack->pop();
+    return $logged_in;
   }
 
   /**
@@ -730,7 +753,7 @@ abstract class WebTestBase extends TestBase {
    *   The name of the session cookie.
    */
   public function getSessionName() {
-    return $this->session_name;
+    return $this->sessionName;
   }
 
   /**
@@ -757,18 +780,17 @@ abstract class WebTestBase extends TestBase {
     $this->originalBatch = batch_get();
 
     // Define information about the user 1 account.
-    $this->root_user = new UserSession(array(
+    $this->rootUser = new UserSession(array(
       'uid' => 1,
       'name' => 'admin',
       'mail' => 'admin@example.com',
       'pass_raw' => $this->randomMachineName(),
     ));
 
-    // Some tests (SessionTest and SessionHttpsTest) need to examine whether the
-    // proper session cookies were set on a response. Because the child site
-    // uses the same session name as the test runner, it is necessary to make
-    // that available to test-methods.
-    $this->session_name = $this->originalSessionName;
+    // The child site derives its session name from the database prefix when
+    // running web tests.
+    $prefix = (Request::createFromGlobals()->isSecure() ? 'SSESS' : 'SESS');
+    $this->sessionName = $prefix . substr(hash('sha256', $this->databasePrefix), 0, 32);
 
     // Reset the static batch to remove Simpletest's batch operations.
     $batch = &batch_get();
@@ -789,13 +811,17 @@ abstract class WebTestBase extends TestBase {
     // @see system_requirements()
     // @see TestBase::prepareEnvironment()
     $settings['settings']['file_public_path'] = (object) array(
-      'value' => $this->public_files_directory,
+      'value' => $this->publicFilesDirectory,
+      'required' => TRUE,
+    );
+    $settings['settings']['file_private_path'] = (object) array(
+      'value' => $this->privateFilesDirectory,
       'required' => TRUE,
     );
     // Save the original site directory path, so that extensions in the
     // site-specific directory can still be discovered in the test site
     // environment.
-    // @see \Drupal\Core\SystemListing::scan()
+    // @see \Drupal\Core\Extension\ExtensionDiscovery::scan()
     $settings['settings']['test_parent_site'] = (object) array(
       'value' => $this->originalSite,
       'required' => TRUE,
@@ -821,19 +847,29 @@ abstract class WebTestBase extends TestBase {
       // Copy the testing-specific service overrides in place.
       copy($settings_services_file, $directory . '/services.yml');
     }
-
+    if ($this->strictConfigSchema) {
+      // Add a listener to validate configuration schema on save.
+      $yaml = new \Symfony\Component\Yaml\Yaml();
+      $services = $yaml->parse($directory . '/services.yml');
+      $services['services']['simpletest.config_schema_checker'] = [
+        'class' => 'Drupal\Core\Config\Testing\ConfigSchemaChecker',
+        'arguments' => ['@config.typed'],
+        'tags' => [['name' => 'event_subscriber']]
+      ];
+      file_put_contents($directory . '/services.yml', $yaml->dump($services));
+    }
     // Since Drupal is bootstrapped already, install_begin_request() will not
     // bootstrap into DRUPAL_BOOTSTRAP_CONFIGURATION (again). Hence, we have to
     // reload the newly written custom settings.php manually.
     $class_loader = require DRUPAL_ROOT . '/core/vendor/autoload.php';
-    Settings::initialize($directory, $class_loader);
+    Settings::initialize(DRUPAL_ROOT, $this->siteDirectory, $class_loader);
 
     // Execute the non-interactive installer.
     require_once DRUPAL_ROOT . '/core/includes/install.core.inc';
-    install_drupal($parameters);
+    install_drupal($class_loader, $parameters);
 
     // Import new settings.php written by the installer.
-    Settings::initialize($directory, $class_loader);
+    Settings::initialize(DRUPAL_ROOT, $this->siteDirectory, $class_loader);
     foreach ($GLOBALS['config_directories'] as $type => $path) {
       $this->configDirectories[$type] = $path;
     }
@@ -859,18 +895,17 @@ abstract class WebTestBase extends TestBase {
     // While these could be preset/enforced in settings.php like the public
     // files directory above, some tests expect them to be configurable in the
     // UI. If declared in settings.php, they would no longer be configurable.
-    file_prepare_directory($this->private_files_directory, FILE_CREATE_DIRECTORY);
-    file_prepare_directory($this->temp_files_directory, FILE_CREATE_DIRECTORY);
-    $config->get('system.file')
-      ->set('path.private', $this->private_files_directory)
-      ->set('path.temporary', $this->temp_files_directory)
+    file_prepare_directory($this->privateFilesDirectory, FILE_CREATE_DIRECTORY);
+    file_prepare_directory($this->tempFilesDirectory, FILE_CREATE_DIRECTORY);
+    $config->getEditable('system.file')
+      ->set('path.temporary', $this->tempFilesDirectory)
       ->save();
 
     // Manually configure the test mail collector implementation to prevent
     // tests from sending out emails and collect them in state instead.
     // While this should be enforced via settings.php prior to installation,
     // some tests expect to be able to test mail system implementations.
-    $config->get('system.mail')
+    $config->getEditable('system.mail')
       ->set('interface.default', 'test_mail_collector')
       ->save();
 
@@ -878,10 +913,10 @@ abstract class WebTestBase extends TestBase {
     // environment optimizations for all tests to avoid needless overhead and
     // ensure a sane default experience for test authors.
     // @see https://drupal.org/node/2259167
-    $config->get('system.logging')
+    $config->getEditable('system.logging')
       ->set('error_level', 'verbose')
       ->save();
-    $config->get('system.performance')
+    $config->getEditable('system.performance')
       ->set('css.preprocess', FALSE)
       ->set('js.preprocess', FALSE)
       ->save();
@@ -901,8 +936,15 @@ abstract class WebTestBase extends TestBase {
     }
     if ($modules) {
       $modules = array_unique($modules);
-      $success = $container->get('module_handler')->install($modules, TRUE);
-      $this->assertTrue($success, String::format('Enabled modules: %modules', array('%modules' => implode(', ', $modules))));
+      try {
+        $success = $container->get('module_installer')->install($modules, TRUE);
+        $this->assertTrue($success, String::format('Enabled modules: %modules', array('%modules' => implode(', ', $modules))));
+      }
+      catch (\Drupal\Core\Extension\MissingDependencyException $e) {
+        // The exception message has all the details.
+        $this->fail($e->getMessage());
+      }
+
       $this->rebuildContainer();
     }
 
@@ -920,12 +962,6 @@ abstract class WebTestBase extends TestBase {
     //   DrupalKernel::prepareLegacyRequest() -> DrupalKernel::boot() but that
     //   appears to be calling a different container.
     $this->container->get('stream_wrapper_manager')->register();
-    // Temporary fix so that when running from run-tests.sh we don't get an
-    // empty current path which would indicate we're on the home page.
-    $path = current_path();
-    if (empty($path)) {
-      _current_path('run-tests');
-    }
   }
 
   /**
@@ -957,11 +993,11 @@ abstract class WebTestBase extends TestBase {
           'site_name' => 'Drupal',
           'site_mail' => 'simpletest@example.com',
           'account' => array(
-            'name' => $this->root_user->name,
-            'mail' => $this->root_user->getEmail(),
+            'name' => $this->rootUser->name,
+            'mail' => $this->rootUser->getEmail(),
             'pass' => array(
-              'pass1' => $this->root_user->pass_raw,
-              'pass2' => $this->root_user->pass_raw,
+              'pass1' => $this->rootUser->pass_raw,
+              'pass2' => $this->rootUser->pass_raw,
             ),
           ),
           // \Drupal\Core\Render\Element\Checkboxes::valueCallback() requires
@@ -977,10 +1013,25 @@ abstract class WebTestBase extends TestBase {
 
     // If we only have one db driver available, we cannot set the driver.
     include_once DRUPAL_ROOT . '/core/includes/install.inc';
-    if (count(drupal_get_database_types()) == 1) {
+    if (count($this->getDatabaseTypes()) == 1) {
       unset($parameters['forms']['install_settings_form']['driver']);
     }
     return $parameters;
+  }
+
+  /**
+   * Returns all supported database driver installer objects.
+   *
+   * This wraps drupal_get_database_types() for use without a current container.
+   *
+   * @return \Drupal\Core\Database\Install\Tasks[]
+   *   An array of available database driver installer objects.
+   */
+  protected function getDatabaseTypes() {
+    \Drupal::setContainer($this->originalContainer);
+    $database_types = drupal_get_database_types();
+    \Drupal::unsetContainer();
+    return $database_types;
   }
 
   /**
@@ -1087,10 +1138,10 @@ abstract class WebTestBase extends TestBase {
   /**
    * Rebuilds \Drupal::getContainer().
    *
-   * Use this to build a new kernel and service container. For example, when the
-   * list of enabled modules is changed via the internal browser, in which case
-   * the test process still contains an old kernel and service container with an
-   * old module list.
+   * Use this to update the test process's kernel with a new service container.
+   * For example, when the list of enabled modules is changed via the internal
+   * browser the test process's kernel has a service container with an out of
+   * date module list.
    *
    * @see TestBase::prepareEnvironment()
    * @see TestBase::restoreEnvironment()
@@ -1101,8 +1152,6 @@ abstract class WebTestBase extends TestBase {
    *   enabled modules to be immediately available in the same request.
    */
   protected function rebuildContainer() {
-    // Maintain the current global request object.
-    $request = \Drupal::request();
     // Rebuild the kernel and bring it back to a fully bootstrapped state.
     $this->container = $this->kernel->rebuildContainer();
 
@@ -1142,12 +1191,7 @@ abstract class WebTestBase extends TestBase {
    */
   protected function refreshVariables() {
     // Clear the tag cache.
-    // @todo Replace drupal_static() usage within classes and provide a
-    //   proper interface for invoking reset() on a cache backend:
-    //   https://www.drupal.org/node/2311945.
-    drupal_static_reset('Drupal\Core\Cache\CacheBackendInterface::tagCache');
-    drupal_static_reset('Drupal\Core\Cache\DatabaseBackend::deletedTags');
-    drupal_static_reset('Drupal\Core\Cache\DatabaseBackend::invalidatedTags');
+    \Drupal::service('cache_tags.invalidator.checksum')->reset();
     foreach (Cache::getBins() as $backend) {
       if (is_callable(array($backend, 'reset'))) {
         $backend->reset();
@@ -1198,7 +1242,7 @@ abstract class WebTestBase extends TestBase {
       // Some versions/configurations of cURL break on a NULL cookie jar, so
       // supply a real file.
       if (empty($this->cookieFile)) {
-        $this->cookieFile = $this->public_files_directory . '/cookie.jar';
+        $this->cookieFile = $this->publicFilesDirectory . '/cookie.jar';
       }
 
       $curl_options = array(
@@ -1213,9 +1257,9 @@ abstract class WebTestBase extends TestBase {
         CURLOPT_HEADERFUNCTION => array(&$this, 'curlHeaderCallback'),
         CURLOPT_USERAGENT => $this->databasePrefix,
       );
-      if (isset($this->httpauth_credentials)) {
-        $curl_options[CURLOPT_HTTPAUTH] = $this->httpauth_method;
-        $curl_options[CURLOPT_USERPWD] = $this->httpauth_credentials;
+      if (isset($this->httpAuthCredentials)) {
+        $curl_options[CURLOPT_HTTPAUTH] = $this->httpAuthMethod;
+        $curl_options[CURLOPT_USERPWD] = $this->httpAuthCredentials;
       }
       // curl_setopt_array() returns FALSE if any of the specified options
       // cannot be set, and stops processing any further options.
@@ -1319,9 +1363,9 @@ abstract class WebTestBase extends TestBase {
 
     if (!$redirect) {
       // Reset headers, the session ID and the redirect counter.
-      $this->session_id = NULL;
+      $this->sessionId = NULL;
       $this->headers = array();
-      $this->redirect_count = 0;
+      $this->redirectCount = 0;
     }
 
     $content = curl_exec($this->curlHandle);
@@ -1332,9 +1376,9 @@ abstract class WebTestBase extends TestBase {
     // to prevent fragments being sent to the web server as part
     // of the request.
     // TODO: Remove this for Drupal 8, since fixed in curl 7.20.0.
-    if (in_array($status, array(300, 301, 302, 303, 305, 307)) && $this->redirect_count < $this->maximumRedirects) {
+    if (in_array($status, array(300, 301, 302, 303, 305, 307)) && $this->redirectCount < $this->maximumRedirects) {
       if ($this->drupalGetHeader('location')) {
-        $this->redirect_count++;
+        $this->redirectCount++;
         $curl_options = array();
         $curl_options[CURLOPT_URL] = $this->drupalGetHeader('location');
         $curl_options[CURLOPT_HTTPGET] = TRUE;
@@ -1393,12 +1437,12 @@ abstract class WebTestBase extends TestBase {
       $parts = array_map('trim', explode(';', $matches[2]));
       $value = array_shift($parts);
       $this->cookies[$name] = array('value' => $value, 'secure' => in_array('secure', $parts));
-      if ($name == $this->session_name) {
+      if ($name == $this->sessionName) {
         if ($value != 'deleted') {
-          $this->session_id = $value;
+          $this->sessionId = $value;
         }
         else {
-          $this->session_id = NULL;
+          $this->sessionId = NULL;
         }
       }
     }
@@ -1435,7 +1479,7 @@ abstract class WebTestBase extends TestBase {
   /**
    * Retrieves a Drupal path or an absolute path.
    *
-   * @param $path
+   * @param \Drupal\Core\Url|string $path
    *   Drupal path or URL to load into internal browser
    * @param $options
    *   Options to be forwarded to the url generator.
@@ -1447,27 +1491,20 @@ abstract class WebTestBase extends TestBase {
    *   The retrieved HTML string, also available as $this->getRawContent()
    */
   protected function drupalGet($path, array $options = array(), array $headers = array()) {
-    $options['absolute'] = TRUE;
-
-    // The URL generator service is not necessarily available yet; e.g., in
-    // interactive installer tests.
-    if ($this->container->has('url_generator')) {
-      $url = $this->container->get('url_generator')->generateFromPath($path, $options);
-    }
-    else {
-      $url = $this->getAbsoluteUrl($path);
-    }
-
     // We re-using a CURL connection here. If that connection still has certain
     // options set, it might change the GET into a POST. Make sure we clear out
     // previous options.
-    $out = $this->curlExec(array(CURLOPT_HTTPGET => TRUE, CURLOPT_URL => $url, CURLOPT_NOBODY => FALSE, CURLOPT_HTTPHEADER => $headers));
+    $out = $this->curlExec(array(CURLOPT_HTTPGET => TRUE, CURLOPT_URL => $this->buildUrl($path, $options), CURLOPT_NOBODY => FALSE, CURLOPT_HTTPHEADER => $headers));
     // Ensure that any changes to variables in the other thread are picked up.
     $this->refreshVariables();
 
     // Replace original page output with new output from redirected page(s).
     if ($new = $this->checkForMetaRefresh()) {
       $out = $new;
+    }
+
+    if ($path instanceof Url) {
+      $path = $path->toString();
     }
 
     $verbose = 'GET request to: ' . $path .
@@ -1487,7 +1524,7 @@ abstract class WebTestBase extends TestBase {
    * @param string $path
    *   Path to request AJAX from.
    * @param array $options
-   *   Array of options to pass to _url().
+   *   Array of URL options.
    * @param array $headers
    *   Array of headers. Eg array('Accept: application/vnd.drupal-ajax').
    *
@@ -1661,6 +1698,9 @@ abstract class WebTestBase extends TestBase {
             $out = $new;
           }
 
+          if ($path instanceof Url) {
+            $path = $path->toString();
+          }
           $verbose = 'POST request to: ' . $path;
           $verbose .= '<hr />Ending URL: ' . $this->getUrl();
           if ($this->dumpHeaders) {
@@ -1838,7 +1878,7 @@ abstract class WebTestBase extends TestBase {
       }
       switch ($command['command']) {
         case 'settings':
-          $drupal_settings = drupal_merge_js_settings(array($drupal_settings, $command['settings']));
+          $drupal_settings = NestedArray::mergeDeepArray([$drupal_settings, $command['settings']], TRUE);
           break;
 
         case 'insert':
@@ -1942,11 +1982,10 @@ abstract class WebTestBase extends TestBase {
    *
    * @see WebTestBase::getAjaxPageStatePostData()
    * @see WebTestBase::curlExec()
-   * @see _url()
    */
   protected function drupalPost($path, $accept, array $post, $options = array()) {
     return $this->curlExec(array(
-      CURLOPT_URL => _url($path, $options + array('absolute' => TRUE)),
+      CURLOPT_URL => $this->buildUrl($path, $options),
       CURLOPT_POST => TRUE,
       CURLOPT_POSTFIELDS => $this->serializePostValues($post),
       CURLOPT_HTTPHEADER => array(
@@ -1968,12 +2007,7 @@ abstract class WebTestBase extends TestBase {
     if (isset($drupal_settings['ajaxPageState'])) {
       $post['ajax_page_state[theme]'] = $drupal_settings['ajaxPageState']['theme'];
       $post['ajax_page_state[theme_token]'] = $drupal_settings['ajaxPageState']['theme_token'];
-      foreach ($drupal_settings['ajaxPageState']['css'] as $key => $value) {
-        $post["ajax_page_state[css][$key]"] = 1;
-      }
-      foreach ($drupal_settings['ajaxPageState']['js'] as $key => $value) {
-        $post["ajax_page_state[js][$key]"] = 1;
-      }
+      $post['ajax_page_state[libraries]'] = $drupal_settings['ajaxPageState']['libraries'];
     }
     return $post;
   }
@@ -2302,16 +2336,6 @@ abstract class WebTestBase extends TestBase {
   }
 
   /**
-   * Get the current URL from the cURL handler.
-   *
-   * @return
-   *   The current URL.
-   */
-  protected function getUrl() {
-    return $this->url;
-  }
-
-  /**
    * Gets the HTTP response headers of the requested page.
    *
    * Normally we are only interested in the headers returned by the last
@@ -2402,26 +2426,6 @@ abstract class WebTestBase extends TestBase {
   }
 
   /**
-   * Gets the current raw HTML of requested page.
-   *
-   * @deprecated 8.x
-   *   Use getRawContent().
-   */
-  protected function drupalGetContent() {
-    return $this->getRawContent();
-  }
-
-  /**
-   * Gets the value of drupalSettings for the currently-loaded page.
-   *
-   * @deprecated 8.x
-   *   Use getDrupalSettings().
-   */
-  protected function drupalGetSettings() {
-    return $this->getDrupalSettings();
-  }
-
-  /**
    * Gets an array containing all emails sent during this test case.
    *
    * @param $filter
@@ -2448,30 +2452,10 @@ abstract class WebTestBase extends TestBase {
   }
 
   /**
-   * Sets the raw HTML content.
-   *
-   * @deprecated 8.x
-   *   Use setRawContent().
-   */
-  protected function drupalSetContent($content) {
-    $this->setRawContent($content);
-  }
-
-  /**
-   * Sets the value of drupalSettings for the currently-loaded page.
-   *
-   * @deprecated 8.x
-   *   Use setDrupalSettings().
-   */
-  protected function drupalSetSettings($settings) {
-    $this->setDrupalSettings($settings);
-  }
-
-  /**
    * Passes if the internal browser's URL matches the given path.
    *
-   * @param $path
-   *   The expected system path.
+   * @param \Drupal\Core\Url|string $path
+   *   The expected system path or URL.
    * @param $options
    *   (optional) Any additional options to pass for $path to the url generator.
    * @param $message
@@ -2488,17 +2472,23 @@ abstract class WebTestBase extends TestBase {
    *   TRUE on pass, FALSE on fail.
    */
   protected function assertUrl($path, array $options = array(), $message = '', $group = 'Other') {
+    if ($path instanceof Url)  {
+      $url = $path->setAbsolute()->toString();
+    }
+    else {
+      $options['absolute'] = TRUE;
+      $url = $this->container->get('url_generator')->generateFromPath($path, $options);
+    }
     if (!$message) {
       $message = String::format('Expected @url matches current URL (@current_url).', array(
-        '@url' => var_export($this->container->get('url_generator')->generateFromPath($path, $options), TRUE),
+        '@url' => var_export($url, TRUE),
         '@current_url' => $this->getUrl(),
       ));
     }
-    $options['absolute'] = TRUE;
     // Paths in query strings can be encoded or decoded with no functional
     // difference, decode them for comparison purposes.
     $actual_url = urldecode($this->getUrl());
-    $expected_url = urldecode($this->container->get('url_generator')->generateFromPath($path, $options));
+    $expected_url = urldecode($url);
     return $this->assertEqual($actual_url, $expected_url, $message, $group);
   }
 
@@ -2716,5 +2706,31 @@ abstract class WebTestBase extends TestBase {
     $this->container->get('router.request_context')->fromRequest($request);
 
     return $request;
+  }
+
+  /**
+   * Builds an a absolute URL from a system path or a URL object.
+   *
+   * @param string|\Drupal\Core\Url $path
+   *   A system path or a URL.
+   * @param array $options
+   *   Options to be passed to Url::fromUri().
+   *
+   * @return string
+   *   An absolute URL stsring.
+   */
+  protected function buildUrl($path, array $options = array()) {
+    if ($path instanceof Url) {
+      return $path->setAbsolute()->toString();
+    }
+    // The URL generator service is not necessarily available yet; e.g., in
+    // interactive installer tests.
+    else if ($this->container->has('url_generator')) {
+      $options['absolute'] = TRUE;
+      return $this->container->get('url_generator')->generateFromPath($path, $options);
+    }
+    else {
+      return $this->getAbsoluteUrl($path);
+    }
   }
 }

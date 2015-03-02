@@ -11,6 +11,7 @@ use Drupal\Component\Utility\SafeMarkup;
 use Drupal\Component\Utility\Html;
 use Drupal\Component\Utility\Timer;
 use Drupal\Component\Utility\Xss;
+use Drupal\Core\Config\Entity\ThirdPartySettingsInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Url;
 use Drupal\views\Views;
@@ -21,12 +22,15 @@ use Drupal\Core\TypedData\TypedDataInterface;
 use Drupal\Core\Session\AccountInterface;
 use Drupal\views\Plugin\views\query\Sql;
 use Drupal\views\Entity\View;
-use Drupal\views\ViewStorageInterface;
+use Drupal\views\ViewEntityInterface;
+use Symfony\Cmf\Component\Routing\RouteObjectInterface;
+use Symfony\Component\HttpFoundation\ParameterBag;
+use Symfony\Component\HttpFoundation\Request;
 
 /**
  * Stores UI related temporary settings.
  */
-class ViewUI implements ViewStorageInterface {
+class ViewUI implements ViewEntityInterface {
 
   /**
    * Indicates if a view is currently being edited.
@@ -67,7 +71,8 @@ class ViewUI implements ViewStorageInterface {
    * If this view is locked for editing.
    *
    * If this view is locked it will contain the result of
-   * \Drupal\user\TempStore::getMetadata(). Which can be a stdClass or NULL.
+   * \Drupal\user\SharedTempStore::getMetadata(). Which can be a stdClass or
+   * NULL.
    *
    * @var stdClass
    */
@@ -106,7 +111,7 @@ class ViewUI implements ViewStorageInterface {
   /**
    * The View storage object.
    *
-   * @var \Drupal\views\ViewStorageInterface
+   * @var \Drupal\views\ViewEntityInterface
    */
   protected $storage;
 
@@ -162,10 +167,10 @@ class ViewUI implements ViewStorageInterface {
   /**
    * Constructs a View UI object.
    *
-   * @param \Drupal\views\ViewStorageInterface $storage
+   * @param \Drupal\views\ViewEntityInterface $storage
    *   The View storage object to wrap.
    */
-  public function __construct(ViewStorageInterface $storage, ViewExecutable $executable = NULL) {
+  public function __construct(ViewEntityInterface $storage, ViewExecutable $executable = NULL) {
     $this->entityType = 'view';
     $this->storage = $storage;
     if (!isset($executable)) {
@@ -324,7 +329,7 @@ class ViewUI implements ViewStorageInterface {
     // Views provides its own custom handling of AJAX form submissions. Usually
     // this happens at the same path, but custom paths may be specified in
     // $form_state.
-    $form_path = $form_state->get('path') ?: current_path();
+    $form_url = $form_state->get('url') ?: Url::fromRouteMatch(\Drupal::routeMatch());
 
     // Forms that are purely informational set an ok_button flag, so we know not
     // to create an "Apply" button for them.
@@ -341,7 +346,7 @@ class ViewUI implements ViewStorageInterface {
         '#submit' => array(array($this, 'standardSubmit')),
         '#button_type' => 'primary',
         '#ajax' => array(
-          'path' => $form_path,
+          'url' => $form_url,
         ),
       );
       // Form API button click detection requires the button's #value to be the
@@ -369,7 +374,7 @@ class ViewUI implements ViewStorageInterface {
       '#submit' => array($cancel_submit),
       '#validate' => array(),
       '#ajax' => array(
-        'path' => $form_path,
+        'path' => $form_url,
       ),
       '#limit_validation_errors' => array(),
     );
@@ -557,7 +562,8 @@ class ViewUI implements ViewStorageInterface {
 
   public function renderPreview($display_id, $args = array()) {
     // Save the current path so it can be restored before returning from this function.
-    $old_q = current_path();
+    $request_stack = \Drupal::requestStack();
+    $current_request = $request_stack->getCurrentRequest();
 
     // Determine where the query and performance statistics should be output.
     $config = \Drupal::config('views.settings');
@@ -573,7 +579,6 @@ class ViewUI implements ViewStorageInterface {
     $combined = $show_query && $show_stats;
 
     $rows = array('query' => array(), 'statistics' => array());
-    $output = '';
 
     $errors = $this->executable->validate();
     $this->executable->destroy();
@@ -595,7 +600,9 @@ class ViewUI implements ViewStorageInterface {
       $this->executable->setExposedInput($exposed_input);
 
       if (!$this->executable->setDisplay($display_id)) {
-        return t('Invalid display id @display', array('@display' => $display_id));
+        return [
+          '#markup' => t('Invalid display id @display', array('@display' => $display_id)),
+        ];
       }
 
       $this->executable->setArguments($args);
@@ -606,15 +613,23 @@ class ViewUI implements ViewStorageInterface {
       }
 
       // Make view links come back to preview.
-      $this->override_path = 'admin/structure/views/view/' . $this->id() . '/preview/' . $display_id;
 
-      // Also override the current path so we get the pager.
-      $original_path = current_path();
-      $q = _current_path($this->override_path);
-      if ($args) {
-        $q .= '/' . implode('/', $args);
-        _current_path($q);
+      // Also override the current path so we get the pager, and make sure the
+      // Request object gets all of the proper values from $_SERVER.
+      $request = Request::createFromGlobals();
+      $request->attributes->set(RouteObjectInterface::ROUTE_NAME, 'entity.view.preview_form');
+      $request->attributes->set(RouteObjectInterface::ROUTE_OBJECT, \Drupal::service('router.route_provider')->getRouteByName('entity.view.preview_form'));
+      $request->attributes->set('view', $this->storage);
+      $request->attributes->set('display_id', $display_id);
+      $raw_parameters = new ParameterBag();
+      $raw_parameters->set('view', $this->id());
+      $raw_parameters->set('display_id', $display_id);
+      $request->attributes->set('_raw_variables', $raw_parameters);
+
+      foreach ($args as $key => $arg) {
+        $request->attributes->set('arg_' . $key, $arg);
       }
+      $request_stack->push($request);
 
       // Suppress contextual links of entities within the result set during a
       // Preview.
@@ -632,7 +647,6 @@ class ViewUI implements ViewStorageInterface {
 
       // Execute/get the view preview.
       $preview = $this->executable->preview($display_id, $args);
-      $preview = drupal_render($preview);
 
       if ($show_additional_queries) {
         $this->endQueryCapture();
@@ -641,10 +655,6 @@ class ViewUI implements ViewStorageInterface {
       $this->render_time = Timer::stop('entity.view.preview_form');
 
       views_ui_contextual_links_suppress_pop();
-
-      // Reset variables.
-      unset($this->override_path);
-      _current_path($original_path);
 
       // Prepare the query information and statistics to show either above or
       // below the view preview.
@@ -669,8 +679,19 @@ class ViewUI implements ViewStorageInterface {
               }
             }
             $rows['query'][] = array(
-              array('data' => array('#type' => 'inline_template', '#template' => "<strong>{% trans 'Query' %}</strong>")),
-              array('data' => array('#type' => 'inline_template', '#template' => '<pre>{{ query }}</pre>', '#context' => array('query' => strtr($query_string, $quoted)))),
+              array(
+                'data' => array(
+                  '#type' => 'inline_template',
+                  '#template' => "<strong>{% trans 'Query' %}</strong>",
+                ),
+              ),
+              array(
+                'data' => array(
+                  '#type' => 'inline_template',
+                  '#template' => '<pre>{{ query }}</pre>',
+                  '#context' => array('query' => strtr($query_string, $quoted)),
+                ),
+              ),
             );
             if (!empty($this->additionalQueries)) {
               $queries = '<strong>' . t('These queries were run during view rendering:') . '</strong>';
@@ -683,18 +704,30 @@ class ViewUI implements ViewStorageInterface {
               }
 
               $rows['query'][] = array(
-                array('data' => array('#type' => 'inline_template', '#template' => "<strong>{% trans 'Other queries' %}</strong>")),
+                array(
+                  'data' => array(
+                    '#type' => 'inline_template',
+                    '#template' => "<strong>{% trans 'Other queries' %}</strong>",
+                  ),
+                ),
                 SafeMarkup::set('<pre>' . $queries . '</pre>'),
               );
             }
           }
           if ($show_info) {
             $rows['query'][] = array(
-              array('data' => array('#type' => 'inline_template', '#template' => "<strong>{% trans 'Title' %}</strong>")),
+              array(
+                'data' => array(
+                  '#type' => 'inline_template',
+                  '#template' => "<strong>{% trans 'Title' %}</strong>",
+                ),
+              ),
               Xss::filterAdmin($this->executable->getTitle()),
             );
             if (isset($path)) {
-              $path = \Drupal::l($path, Url::fromUri('base://' . $path));
+              // @todo Views should expect and store a leading /. See:
+              //   https://www.drupal.org/node/2423913
+              $path = \Drupal::l($path->toString(), $path);
             }
             else {
               $path = t('This display has no path.');
@@ -703,10 +736,35 @@ class ViewUI implements ViewStorageInterface {
           }
 
           if ($show_stats) {
-            $rows['statistics'][] = array('<strong>' . t('Query build time') . '</strong>', t('@time ms', array('@time' => intval($this->executable->build_time * 100000) / 100)));
-            $rows['statistics'][] = array('<strong>' . t('Query execute time') . '</strong>', t('@time ms', array('@time' => intval($this->executable->execute_time * 100000) / 100)));
-            $rows['statistics'][] = array('<strong>' . t('View render time') . '</strong>', t('@time ms', array('@time' => intval($this->executable->render_time * 100000) / 100)));
+            $rows['statistics'][] = array(
+              array(
+                'data' => array(
+                  '#type' => 'inline_template',
+                  '#template' => "<strong>{% trans 'Query build time' %}</strong>",
+                ),
+              ),
+              t('@time ms', array('@time' => intval($this->executable->build_time * 100000) / 100)),
+            );
 
+            $rows['statistics'][] = array(
+              array(
+                'data' => array(
+                  '#type' => 'inline_template',
+                  '#template' => "<strong>{% trans 'Query execute time' %}</strong>",
+                ),
+              ),
+              t('@time ms', array('@time' => intval($this->executable->execute_time * 100000) / 100)),
+            );
+
+            $rows['statistics'][] = array(
+              array(
+                'data' => array(
+                  '#type' => 'inline_template',
+                  '#template' => "<strong>{% trans 'View render time' %}</strong>",
+                ),
+              ),
+              t('@time ms', array('@time' => intval($this->executable->render_time * 100000) / 100)),
+            );
           }
           \Drupal::moduleHandler()->alter('views_preview_info', $rows, $this->executable);
         }
@@ -751,13 +809,23 @@ class ViewUI implements ViewStorageInterface {
     }
 
     if ($show_location === 'above' || $show_stats === 'above') {
-      $output .= drupal_render($table) . $preview;
+      $output = [
+        'table' => $table,
+        'preview' => $preview,
+      ];
     }
     elseif ($show_location === 'below' || $show_stats === 'below') {
-      $output .= $preview . drupal_render($table);
+      $output = [
+        'preview' => $preview,
+        'table' => $table,
+      ];
     }
 
-    _current_path($old_q);
+    // Ensure that we just remove an additional request we pushed earlier.
+    // This could happen if $errors was not empty.
+    if ($request_stack->getCurrentRequest() != $current_request) {
+      $request_stack->pop();
+    }
     return $output;
   }
 
@@ -813,7 +881,7 @@ class ViewUI implements ViewStorageInterface {
     unset($executable->default_display);
     $executable->query = NULL;
     unset($executable->displayHandlers);
-    \Drupal::service('user.tempstore')->get('views')->set($this->id(), $this);
+    \Drupal::service('user.shared_tempstore')->get('views')->set($this->id(), $this);
   }
 
   /**
@@ -1063,6 +1131,20 @@ class ViewUI implements ViewStorageInterface {
   /**
    * {@inheritdoc}
    */
+  public function getExecutable() {
+    return $this->storage->getExecutable();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function duplicateDisplayAsType($old_display_id, $new_display_type) {
+    return $this->storage->duplicateDisplayAsType($old_display_id, $new_display_type);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
   public function mergeDefaultDisplaysOptions() {
     $this->storage->mergeDefaultDisplaysOptions();
   }
@@ -1104,7 +1186,22 @@ class ViewUI implements ViewStorageInterface {
   /**
    * {@inheritdoc}
    */
+  public function getConfigDependencyKey() {
+    return $this->storage->getConfigDependencyKey();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
   public function getConfigDependencyName() {
+    return $this->storage->getConfigDependencyName();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getConfigTarget() {
+    return $this->storage->getConfigTarget();
   }
 
   /**
@@ -1125,7 +1222,7 @@ class ViewUI implements ViewStorageInterface {
    * {@inheritdoc}
    */
   public function getCacheTags() {
-    $this->storage->getCacheTags();
+    return $this->storage->getCacheTags();
   }
 
   /**
@@ -1135,4 +1232,59 @@ class ViewUI implements ViewStorageInterface {
     $this->storage->getTypedData();
   }
 
+  /**
+   * {@inheritdoc}
+   */
+  public function addDisplay($plugin_id = 'page', $title = NULL, $id = NULL) {
+    return $this->storage->addDisplay($plugin_id, $title, $id);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getViewExecutable() {
+    return $this->storage->getViewExecutable();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function isInstallable() {
+    return $this->storage->isInstallable();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function setThirdPartySetting($module, $key, $value) {
+    return $this->storage->setThirdPartySetting($module, $key, $value);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getThirdPartySetting($module, $key, $default = NULL) {
+    return $this->storage->getThirdPartySetting($module, $key, $default);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getThirdPartySettings($module) {
+    return $this->storage->getThirdPartySettings($module);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function unsetThirdPartySetting($module, $key) {
+    return $this->storage->unsetThirdPartySetting($module, $key);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getThirdPartyProviders() {
+    return $this->storage->getThirdPartyProviders();
+  }
 }

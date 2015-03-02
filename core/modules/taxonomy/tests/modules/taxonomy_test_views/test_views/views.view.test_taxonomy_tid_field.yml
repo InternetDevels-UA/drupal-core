@@ -3,6 +3,7 @@ status: true
 dependencies:
   module:
     - taxonomy
+    - user
 id: test_taxonomy_tid_field
 label: test_taxonomy_tid_field
 module: views
@@ -31,7 +32,7 @@ display:
           disable_sql_rewrite: false
           distinct: false
           replica: false
-          query_comment: false
+          query_comment: ''
           query_tags: {  }
       exposed_form:
         type: basic
@@ -105,7 +106,7 @@ display:
             suffix: ''
             target: ''
             nl2br: false
-            max_length: ''
+            max_length: 0
             word_boundary: true
             ellipsis: true
             more_link: false
@@ -130,6 +131,8 @@ display:
           link_to_taxonomy: true
           convert_spaces: false
           plugin_id: taxonomy
+          entity_type: taxonomy_term
+          entity_field: name
       filters: {  }
       sorts:
         tid:
@@ -144,10 +147,10 @@ display:
           expose:
             label: ''
           plugin_id: standard
+          entity_type: taxonomy_term
+          entity_field: tid
       header: {  }
       footer: {  }
       empty: {  }
       relationships: {  }
       arguments: {  }
-      field_langcode: '***LANGUAGE_language_content***'
-      field_langcode_add_to_query: null

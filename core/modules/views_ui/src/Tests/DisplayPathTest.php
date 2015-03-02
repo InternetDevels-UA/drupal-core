@@ -87,7 +87,7 @@ class DisplayPathTest extends UITestBase {
    * Tests the menu and tab option form.
    */
   public function testMenuOptions() {
-    $this->container->get('module_handler')->install(array('menu_ui'));
+    $this->container->get('module_installer')->install(array('menu_ui'));
     $this->drupalGet('admin/structure/views/view/test_view');
 
     // Add a new page display.
@@ -104,10 +104,6 @@ class DisplayPathTest extends UITestBase {
     // Add an invalid path with just a query.
     $this->drupalPostForm('admin/structure/views/nojs/display/test_view/page_1/path', array('path' => '?bar'), t('Apply'));
     $this->assertText('Path is empty');
-
-    // Add an invalid path from a random test failure.
-    $this->drupalPostForm('admin/structure/views/nojs/display/test_view/page_1/path', array('path' => 'AKI@&hO@'), t('Apply'));
-    $this->assertText('Invalid path');
 
     // Provide a random, valid path string.
     $random_string = $this->randomMachineName();

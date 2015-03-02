@@ -76,9 +76,10 @@ class EntityAccessControlHandler extends EntityHandlerBase implements EntityAcce
     );
 
     $return = $this->processAccessHookResults($access);
-    if ($return->isNeutral()) {
-      // No module had an opinion about the access, so let's the access
-      // handler check access.
+
+    // Also execute the default access check except when the access result is
+    // already forbidden, as in that case, it can not be anything else.
+    if (!$return->isForbidden()) {
       $return = $return->orIf($this->checkAccess($entity, $operation, $langcode, $account));
     }
     $result = $this->setCache($return, $entity->uuid(), $operation, $langcode, $account);
@@ -120,10 +121,9 @@ class EntityAccessControlHandler extends EntityHandlerBase implements EntityAcce
    * do their own custom access checking.
    *
    * @param \Drupal\Core\Entity\EntityInterface $entity
-   *   The entity for which to check 'create' access.
+   *   The entity for which to check access.
    * @param string $operation
-   *   The entity operation. Usually one of 'view', 'update', 'create' or
-   *   'delete'.
+   *   The entity operation. Usually one of 'view', 'update' or 'delete'.
    * @param string $langcode
    *   The language code for which to check access.
    * @param \Drupal\Core\Session\AccountInterface $account
@@ -231,9 +231,10 @@ class EntityAccessControlHandler extends EntityHandlerBase implements EntityAcce
     );
 
     $return = $this->processAccessHookResults($access);
-    if ($return->isNeutral()) {
-      // No module had an opinion about the access, so let's the access
-      // handler check create access.
+
+    // Also execute the default access check except when the access result is
+    // already forbidden, as in that case, it can not be anything else.
+    if (!$return->isForbidden()) {
       $return = $return->orIf($this->checkCreateAccess($account, $context, $entity_bundle));
     }
     $result = $this->setCache($return, $cid, 'create', $context['langcode'], $account);

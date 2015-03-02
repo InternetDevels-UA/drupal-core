@@ -1,16 +1,25 @@
+langcode: und
+status: true
+dependencies:
+  module:
+    - views_test_data
+  content:
+    - StaticTest
+id: test_page_display_route
+label: ''
+module: views
+description: ''
+tag: ''
 base_table: views_test_data
 base_field: id
 core: '8'
-description: ''
-status: '1'
 display:
   default:
     display_options:
       defaults:
-        fields: '0'
-        pager: '0'
-        pager_options: '0'
-        sorts: '0'
+        fields: false
+        pager: false
+        sorts: false
       fields:
         id:
           id: id
@@ -31,7 +40,7 @@ display:
   page_2:
     display_options:
       defaults:
-        arguments: '0'
+        arguments: false
       arguments:
         id:
           field: id
@@ -47,7 +56,7 @@ display:
   page_3:
     display_options:
       defaults:
-        arguments: '0'
+        arguments: false
       arguments:
         id:
           field: id
@@ -63,7 +72,7 @@ display:
   page_4:
     display_options:
       defaults:
-        arguments: '0'
+        arguments: false
       arguments:
         id:
           field: id
@@ -85,7 +94,7 @@ display:
   page_5:
     display_options:
       defaults:
-        arguments: '0'
+        arguments: false
       arguments:
         id:
           field: id
@@ -107,7 +116,7 @@ display:
   page_6:
     display_options:
       defaults:
-        arguments: '0'
+        arguments: false
       arguments:
         id:
           field: id
@@ -129,7 +138,7 @@ display:
   page_7:
     display_options:
       defaults:
-        access: '0'
+        access: false
       access:
         type: test_static
       path: test_route_arguments_access
@@ -137,6 +146,3 @@ display:
     display_title: Page
     id: page_7
     position: 0
-label: ''
-id: test_page_display_route
-tag: ''

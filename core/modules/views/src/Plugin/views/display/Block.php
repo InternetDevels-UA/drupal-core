@@ -173,7 +173,7 @@ class Block extends DisplayPluginBase {
     $options['block_hide_empty'] = array(
       'category' => 'other',
       'title' => $this->t('Hide block if the view output is empty'),
-      'value' => $this->getOption('block_hide_empty') ? $this->t('Hide') : $this->t('Show'),
+      'value' => $this->getOption('block_hide_empty') ? $this->t('Yes') : $this->t('No'),
     );
   }
 
@@ -332,6 +332,7 @@ class Block extends DisplayPluginBase {
     if ($items_per_page = $form_state->getValue(array('override', 'items_per_page'))) {
       $block->setConfigurationValue('items_per_page', $items_per_page);
     }
+    $form_state->unsetValue(array('override', 'items_per_page'));
   }
 
   /**

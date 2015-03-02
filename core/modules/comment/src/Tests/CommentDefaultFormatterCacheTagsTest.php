@@ -19,8 +19,10 @@ use Drupal\system\Tests\Entity\EntityUnitTestBase;
  */
 class CommentDefaultFormatterCacheTagsTest extends EntityUnitTestBase {
 
+  use CommentTestTrait;
+
   /**
-   * Modules to enable.
+   * Modules to install.
    *
    * @var array
    */
@@ -40,7 +42,6 @@ class CommentDefaultFormatterCacheTagsTest extends EntityUnitTestBase {
 
     // Install tables and config needed to render comments.
     $this->installSchema('comment', array('comment_entity_statistics'));
-    $this->installEntitySchema('comment');
     $this->installConfig(array('system', 'filter'));
 
     // Comment rendering generates links, so build the router.
@@ -49,7 +50,7 @@ class CommentDefaultFormatterCacheTagsTest extends EntityUnitTestBase {
 
     // Set up a field, so that the entity that'll be referenced bubbles up a
     // cache tag when rendering it entirely.
-    \Drupal::service('comment.manager')->addDefaultField('entity_test', 'entity_test');
+    $this->addDefaultCommentField('entity_test', 'entity_test');
   }
 
   /**
@@ -108,7 +109,7 @@ class CommentDefaultFormatterCacheTagsTest extends EntityUnitTestBase {
       'comment_list',
       'comment_view',
       'comment:' . $comment->id(),
-      'filter_format:plain_text',
+      'config:filter.format.plain_text',
       'user_view',
       'user:2',
     );

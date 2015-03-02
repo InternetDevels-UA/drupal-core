@@ -15,6 +15,22 @@ use Drupal\Component\Utility\Unicode;
  */
 class DependencyTest extends ModuleTestBase {
   /**
+   * Checks functionality of project namespaces for dependencies.
+   */
+  function testProjectNamespaceForDependencies() {
+    $edit = array(
+      'modules[Core][filter][enable]' => TRUE,
+    );
+    $this->drupalPostForm('admin/modules', $edit, t('Save configuration'));
+    // Enable module with project namespace to ensure nothing breaks.
+    $edit = array(
+      'modules[Testing][system_project_namespace_test][enable]' => TRUE,
+    );
+    $this->drupalPostForm('admin/modules', $edit, t('Save configuration'));
+    $this->assertModules(array('system_project_namespace_test'), TRUE);
+  }
+
+  /**
    * Attempts to enable the Content Translation module without Language enabled.
    */
   function testEnableWithoutDependency() {
@@ -84,7 +100,7 @@ class DependencyTest extends ModuleTestBase {
    * Tests enabling a module that depends on a module which fails hook_requirements().
    */
   function testEnableRequirementsFailureDependency() {
-    \Drupal::moduleHandler()->install(array('comment'));
+    \Drupal::service('module_installer')->install(array('comment'));
 
     $this->assertModules(array('requirements1_test'), FALSE);
     $this->assertModules(array('requirements2_test'), FALSE);
@@ -111,7 +127,7 @@ class DependencyTest extends ModuleTestBase {
    * Dependencies should be enabled before their dependents.
    */
   function testModuleEnableOrder() {
-    \Drupal::moduleHandler()->install(array('module_test'), FALSE);
+    \Drupal::service('module_installer')->install(array('module_test'), FALSE);
     $this->resetAll();
     $this->assertModules(array('module_test'), TRUE);
     \Drupal::state()->set('module_test.dependency', 'dependency');
@@ -156,7 +172,7 @@ class DependencyTest extends ModuleTestBase {
     $this->assert(count($checkbox) == 0, 'Checkbox for uninstalling the comment module not found.');
 
     // Delete any forum terms.
-    $vid = \Drupal::config('forum.settings')->get('vocabulary');
+    $vid = $this->config('forum.settings')->get('vocabulary');
     // Ensure taxonomy has been loaded into the test-runner after forum was
     // enabled.
     \Drupal::moduleHandler()->load('taxonomy');

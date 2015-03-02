@@ -121,6 +121,11 @@ class EntityReferenceFieldTranslatedReferenceViewTest extends WebTestBase {
     $this->translatedLabel = $this->randomMachineName();
 
     $this->setUpLanguages();
+
+    // We setup languages, so we need to ensure that the language manager
+    // and language path processor is updated.
+    $this->rebuildContainer();
+
     $this->setUpContentTypes();
     $this->enableTranslation();
     $this->setUpEntityReferenceField();
@@ -131,14 +136,14 @@ class EntityReferenceFieldTranslatedReferenceViewTest extends WebTestBase {
    * Tests if the translated entity is displayed in an entity reference field.
    */
   public function testTranslatedEntityReferenceDisplay() {
-    $path = $this->referrerEntity->getSystemPath();
-    $translation_path = $this->translateToLangcode . '/' . $path;
+    $url = $this->referrerEntity->urlInfo();
+    $translation_url = $this->referrerEntity->urlInfo('canonical', ['language' => ConfigurableLanguage::load($this->translateToLangcode)]);
 
-    $this->drupalGet($path);
+    $this->drupalGet($url);
     $this->assertText($this->labelOfNotTranslatedReference, 'The label of not translated reference is displayed.');
     $this->assertText($this->originalLabel, 'The default label of translated reference is displayed.');
     $this->assertNoText($this->translatedLabel, 'The translated label of translated reference is not displayed.');
-    $this->drupalGet($translation_path);
+    $this->drupalGet($translation_url);
     $this->assertText($this->labelOfNotTranslatedReference, 'The label of not translated reference is displayed.');
     $this->assertNoText($this->originalLabel, 'The default label of translated reference is not displayed.');
     $this->assertText($this->translatedLabel, 'The translated label of translated reference is displayed.');
@@ -166,11 +171,12 @@ class EntityReferenceFieldTranslatedReferenceViewTest extends WebTestBase {
   protected function enableTranslation() {
     // Enable translation for the entity types and ensure the change is picked
     // up.
-    content_translation_set_config($this->testEntityTypeName, $this->referrerType->id(), 'enabled', TRUE);
-    content_translation_set_config($this->testEntityTypeName, $this->referencedType->id(), 'enabled', TRUE);
+    \Drupal::service('content_translation.manager')->setEnabled($this->testEntityTypeName, $this->referrerType->id(), TRUE);
+    \Drupal::service('content_translation.manager')->setEnabled($this->testEntityTypeName, $this->referencedType->id(), TRUE);
     drupal_static_reset();
     \Drupal::entityManager()->clearCachedDefinitions();
     \Drupal::service('router.builder')->rebuild();
+    \Drupal::service('entity.definition_update_manager')->applyUpdates();
   }
 
   /**
@@ -194,7 +200,7 @@ class EntityReferenceFieldTranslatedReferenceViewTest extends WebTestBase {
 
     entity_create('field_config', array(
       'field_name' => $this->referenceFieldName,
-      'bundle' => $this->referrerType->type,
+      'bundle' => $this->referrerType->id(),
       'entity_type' => $this->testEntityTypeName,
     ))
     ->save();

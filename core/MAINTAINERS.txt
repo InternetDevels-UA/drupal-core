@@ -63,6 +63,7 @@ Cron system
 
 CSS
 - John Albin Wilkins 'JohnAlbin' http://drupal.org/user/32095
+- Lewis Nyman 'LewisNyman' https://drupal.org/user/751964
 
 Database system
 - Larry Garfield 'Crell' http://drupal.org/user/26398
@@ -333,7 +334,6 @@ Menu UI module
 - ?
 
 Menu Link module
-- Andrei Mateescu 'amateescu' http://drupal.org/user/729614
 - Peter Wolanin 'pwolanin' http://drupal.org/user/49851
 
 Migrate module
@@ -385,7 +385,8 @@ Serialization module
 - Damian Lee 'damiankloip' http://drupal.org/user/1037976
 
 Shortcut module
-- ?
+- Tobias Stöckler 'tstoeckler' https://www.drupal.org/user/107158
+- Jibran Ijaz 'jibran' https://www.drupal.org/user/1198144
 
 Simpletest module
 - Daniel F. Kudwien 'sun' http://drupal.org/user/54136
@@ -443,7 +444,7 @@ Theme maintainers
 
 Bartik theme
 - Jen Simmons 'jensimmons' http://drupal.org/user/140882
-- Jeff Burns 'Jeff Burnz' http://drupal.org/user/61393
+- Emma Maria Karayiannis 'emma.maria' https://drupal.org/user/2104556
 
 Seven theme
 - Lewis Nyman 'LewisNyman' https://drupal.org/user/751964

@@ -6,6 +6,7 @@
  */
 
 use Drupal\Component\Utility\SafeMarkup;
+use Drupal\Component\Utility\String;
 use Drupal\Core\Url;
 use Drupal\Core\Render\Element;
 use Drupal\locale\SourceString;
@@ -38,54 +39,6 @@ function locale_translation_manual_status() {
 }
 
 /**
- * Returns HTML for translation edit form.
- *
- * @param array $variables
- *   An associative array containing:
- *   - form: The form that contains the language information.
- *
- * @return string
- *   The themed output.
- *
- * @see locale_translate_edit_form()
- * @ingroup themeable
- */
-function theme_locale_translate_edit_form_strings(array $variables) {
-  $output = '';
-  $form = $variables['form'];
-  $header = array(
-    t('Source string'),
-    t('Translation for @language', array('@language' => $form['#language'])),
-  );
-  $rows = array();
-  foreach (Element::children($form) as $lid) {
-    $string = $form[$lid];
-    if ($string['plural']['#value']) {
-      $source = drupal_render($string['original_singular']) . '<br />' . drupal_render($string['original_plural']);
-    }
-    else {
-      $source = drupal_render($string['original']);
-    }
-    $source .= empty($string['context']) ? '' : '<br /><small>' . t('In Context') . ':&nbsp;' . $string['context']['#value'] . '</small>';
-    $rows[] = array(
-      array('data' => SafeMarkup::set($source)),
-      array('data' => $string['translations']),
-    );
-  }
-  $table = array(
-    '#type' => 'table',
-    '#header' => $header,
-    '#rows' => $rows,
-    '#empty' => t('No strings available.'),
-    '#attributes' => array('class' => array('locale-translate-edit-table')),
-  );
-  $output .= drupal_render($table);
-  $pager = array('#theme' => 'pager');
-  $output .= drupal_render($pager);
-  return $output;
-}
-
-/**
  * Prepares variables for translation status information templates.
  *
  * Translation status information is displayed per language.
@@ -108,7 +61,10 @@ function template_preprocess_locale_translation_update_info(array &$variables) {
     if ($variables['updates']) {
       foreach ($variables['updates'] as $update) {
         $modules[] = $update['name'];
-        $releases[] = t('@module (@date)', array('@module' => $update['name'], '@date' => format_date($update['timestamp'], 'html_date')));
+        $releases[] = String::format('@module (@date)', array(
+          '@module' => $update['name'],
+          '@date' => format_date($update['timestamp'], 'html_date'),
+        ));
       }
       $variables['modules'] = $modules;
     }
@@ -121,11 +77,15 @@ function template_preprocess_locale_translation_update_info(array &$variables) {
   // Build output for updates not found.
   if (isset($variables['not_found'])) {
     $releases = array();
-    $variables['missing_updates_status'] = format_plural(count($variables['not_found']), 'Missing translations for one project', 'Missing translations for @count projects');
+    $variables['missing_updates_status'] = \Drupal::translation()->formatPlural(count($variables['not_found']), 'Missing translations for one project', 'Missing translations for @count projects');
     if ($variables['not_found']) {
       foreach ($variables['not_found'] as $update) {
         $version = $update['version'] ? $update['version'] : t('no version');
-        $releases[] = t('@module (@version).', array('@module' => $update['name'], '@version' => $version)) . ' ' . $update['info'];
+        $releases[] = String::format('@module (@version). !info', array(
+          '@module' => $update['name'],
+          '@version' => $version,
+          '!info' => $update['info'],
+        ));
       }
     }
     $details['missing_updates_list'] = array(

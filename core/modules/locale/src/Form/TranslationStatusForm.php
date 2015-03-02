@@ -98,7 +98,7 @@ class TranslationStatusForm extends FormBase {
             ),
           ),
           'status' => array(
-            'class' => array('description', 'expand', 'priority-low'),
+            'class' => array('description', 'priority-low'),
             'data' => drupal_render($locale_translation_update_info),
           ),
         );
@@ -135,7 +135,7 @@ class TranslationStatusForm extends FormBase {
 
     if (!$languages) {
       $empty = $this->t('No translatable languages available. <a href="@add_language">Add a language</a> first.', array(
-        '@add_language' => $this->url('language.admin_overview'),
+        '@add_language' => $this->url('entity.configurable_language.collection'),
       ));
     }
     elseif ($status) {
@@ -167,7 +167,6 @@ class TranslationStatusForm extends FormBase {
     );
 
     $form['#attached']['library'][] = 'locale/drupal.locale.admin';
-    $form['#attached']['css'] = array(drupal_get_path('module', 'locale') . '/css/locale.admin.css');
 
     $form['actions'] = array('#type' => 'actions');
     if ($languages_update) {

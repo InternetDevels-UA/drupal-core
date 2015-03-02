@@ -92,7 +92,7 @@ class BlockDependenciesTest extends ViewUnitTestBase {
       'plugin' => $plugin_id,
       'region' => 'sidebar_first',
       'id' => strtolower($this->randomMachineName(8)),
-      'theme' => \Drupal::config('system.theme')->get('default'),
+      'theme' => $this->config('system.theme')->get('default'),
       'label' => $this->randomMachineName(8),
       'visibility' => array(),
       'weight' => 0,
@@ -100,13 +100,14 @@ class BlockDependenciesTest extends ViewUnitTestBase {
         'max_age' => 0,
       ),
     );
-    foreach (array('region', 'id', 'theme', 'plugin', 'weight') as $key) {
+    $values = [];
+    foreach (array('region', 'id', 'theme', 'plugin', 'weight', 'visibility') as $key) {
       $values[$key] = $settings[$key];
       // Remove extra values that do not belong in the settings array.
       unset($settings[$key]);
     }
-    foreach ($settings['visibility'] as $id => $visibility) {
-      $settings['visibility'][$id]['id'] = $id;
+    foreach ($values['visibility'] as $id => $visibility) {
+      $values['visibility'][$id]['id'] = $id;
     }
     $values['settings'] = $settings;
     $block = entity_create('block', $values);

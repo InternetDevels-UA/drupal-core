@@ -89,7 +89,7 @@ class ForumUninstallTest extends WebTestBase {
     $this->assertText('To uninstall Forum first delete all Forums terms');
 
     // Delete any forum terms.
-    $vid = \Drupal::config('forum.settings')->get('vocabulary');
+    $vid = $this->config('forum.settings')->get('vocabulary');
     $terms = entity_load_multiple_by_properties('taxonomy_term', ['vid' => $vid]);
     foreach ($terms as $term) {
       $term->delete();
@@ -145,7 +145,7 @@ class ForumUninstallTest extends WebTestBase {
 
     // Ensure that uninstallation succeeds even if the field has already been
     // deleted manually beforehand.
-    $this->container->get('module_handler')->uninstall(array('forum'));
+    $this->container->get('module_installer')->uninstall(array('forum'));
   }
 
 }

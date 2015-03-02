@@ -7,8 +7,7 @@
 
 namespace Drupal\system\Tests\Menu;
 
-use Drupal\Component\Utility\String;
-use Drupal\Component\Utility\Unicode;
+use Drupal\Core\Url;
 use Drupal\node\Entity\NodeType;
 
 /**
@@ -41,9 +40,8 @@ class BreadcrumbTest extends MenuTestBase {
     // presence on the page, so we need to ensure that the Tools block will be
     // displayed in the admin theme.
     $this->drupalPlaceBlock('system_menu_block:tools', array(
-      'machine' => 'system_menu_tools',
       'region' => 'content',
-      'theme' => \Drupal::config('system.theme')->get('admin'),
+      'theme' => $this->config('system.theme')->get('admin'),
     ));
   }
 
@@ -115,7 +113,7 @@ class BreadcrumbTest extends MenuTestBase {
     // Verify Filter text format administration breadcrumbs.
     $filter_formats = filter_formats();
     $format = reset($filter_formats);
-    $format_id = $format->format;
+    $format_id = $format->id();
     $trail = $config + array(
       'admin/config/content' => t('Content authoring'),
     );
@@ -189,7 +187,7 @@ class BreadcrumbTest extends MenuTestBase {
     $menu = 'tools';
     $edit = array(
       'title[0][value]' => 'Root',
-      'url' => 'node',
+      'link[0][uri]' => '/node',
     );
     $this->drupalPostForm("admin/structure/menu/manage/$menu/add", $edit, t('Save'));
     $menu_links = entity_load_multiple_by_properties('menu_link_content', array('title' => 'Root'));
@@ -242,15 +240,14 @@ class BreadcrumbTest extends MenuTestBase {
       $term = $data['term'];
       $edit = array(
         'title[0][value]' => "$name link",
-        'url' => "taxonomy/term/{$term->id()}",
+        'link[0][uri]' => "/taxonomy/term/{$term->id()}",
         'menu_parent' => "$menu:{$parent_mlid}",
         'enabled[value]' => 1,
       );
       $this->drupalPostForm("admin/structure/menu/manage/$menu/add", $edit, t('Save'));
       $menu_links = entity_load_multiple_by_properties('menu_link_content', array(
         'title' => $edit['title[0][value]'],
-        'route_name' => 'entity.taxonomy_term.canonical',
-        'route_parameters' => serialize(array('taxonomy_term' => $term->id())),
+        'link.uri' => 'internal:/taxonomy/term/' . $term->id(),
       ));
       $tags[$name]['link'] = reset($menu_links);
       $parent_mlid = $tags[$name]['link']->getPluginId();
@@ -280,7 +277,7 @@ class BreadcrumbTest extends MenuTestBase {
       // other than the breadcrumb trail.
       $elements = $this->xpath('//nav[@id=:menu]/descendant::a[@href=:href]', array(
         ':menu' => 'block-bartik-tools',
-        ':href' => _url($link_path),
+        ':href' => Url::fromUri('base:' . $link_path)->toString(),
       ));
       $this->assertTrue(count($elements) == 1, "Link to {$link_path} appears only once.");
 

@@ -9,8 +9,8 @@ namespace Drupal\simpletest;
 
 use Drupal\Component\Utility\Crypt;
 use Drupal\Component\Utility\Random;
-use Drupal\Core\Database\Database;
 use Drupal\Component\Utility\String;
+use Drupal\Core\Database\Database;
 use Drupal\Core\Config\ConfigImporter;
 use Drupal\Core\Config\StorageComparer;
 use Drupal\Core\DependencyInjection\ContainerBuilder;
@@ -53,20 +53,6 @@ abstract class TestBase {
    * @var string
    */
   protected $databasePrefix = NULL;
-
-  /**
-   * The site directory of the original parent site.
-   *
-   * @var string
-   */
-  protected $originalSite;
-
-  /**
-   * The original file directory, before it was changed for testing purposes.
-   *
-   * @var string
-   */
-  protected $originalFileDirectory = NULL;
 
   /**
    * Time limit for the test.
@@ -133,13 +119,6 @@ abstract class TestBase {
   protected $verboseDirectory;
 
   /**
-   * The original database prefix when running inside Simpletest.
-   *
-   * @var string
-   */
-  protected $originalPrefix;
-
-  /**
    * URL to the verbose output file directory.
    *
    * @var string
@@ -147,9 +126,100 @@ abstract class TestBase {
   protected $verboseDirectoryUrl;
 
   /**
+   * The original configuration (variables), if available.
+   *
+   * @var string
+   * @todo Remove all remnants of $GLOBALS['conf'].
+   * @see https://drupal.org/node/2183323
+   */
+  protected $originalConf;
+
+  /**
+   * The original configuration (variables).
+   *
+   * @var string
+   */
+  protected $originalConfig;
+
+  /**
+   * The original configuration directories.
+   *
+   * An array of paths keyed by the CONFIG_*_DIRECTORY constants defined by
+   * core/includes/bootstrap.inc.
+   *
+   * @var array
+   */
+  protected $originalConfigDirectories;
+
+  /**
+   * The original container.
+   *
+   * @var \Symfony\Component\DependencyInjection\ContainerInterface
+   */
+  protected $originalContainer;
+
+  /**
+   * The original file directory, before it was changed for testing purposes.
+   *
+   * @var string
+   */
+  protected $originalFileDirectory = NULL;
+
+  /**
+   * The original language.
+   *
+   * @var \Drupal\Core\Language\LanguageInterface
+   */
+  protected $originalLanguage;
+
+  /**
+   * The original database prefix when running inside Simpletest.
+   *
+   * @var string
+   */
+  protected $originalPrefix;
+
+  /**
+   * The original installation profile.
+   *
+   * @var string
+   */
+  protected $originalProfile;
+
+  /**
+   * The name of the session cookie.
+   *
+   * @var string
+   */
+  protected $originalSessionName;
+
+  /**
    * The settings array.
+   *
+   * @var array
    */
   protected $originalSettings;
+
+  /**
+   * The original array of shutdown function callbacks.
+   *
+   * @var array
+   */
+  protected $originalShutdownCallbacks;
+
+  /**
+   * The site directory of the original parent site.
+   *
+   * @var string
+   */
+  protected $originalSite;
+
+  /**
+   * The original user, before testing began.
+   *
+   * @var \Drupal\Core\Session\AccountProxyInterface
+   */
+  protected $originalUser;
 
   /**
    * The public file directory for the test environment.
@@ -158,7 +228,34 @@ abstract class TestBase {
    *
    * @var string
    */
-  protected $public_files_directory;
+  protected $publicFilesDirectory;
+
+  /**
+   * The private file directory for the test environment.
+   *
+   * This is set in TestBase::prepareEnvironment().
+   *
+   * @var string
+   */
+  protected $privateFilesDirectory;
+
+  /**
+   * The temporary file directory for the test environment.
+   *
+   * This is set in TestBase::prepareEnvironment().
+   *
+   * @var string
+   */
+  protected $tempFilesDirectory;
+
+  /**
+   * The translation file directory for the test environment.
+   *
+   * This is set in TestBase::prepareEnvironment().
+   *
+   * @var string
+   */
+  protected $translationFilesDirectory;
 
   /**
    * Whether to die in case any test assertion fails.
@@ -198,9 +295,28 @@ abstract class TestBase {
   protected $randomGenerator;
 
   /**
-   * The name of the session cookie.
+   * Set to TRUE to strict check all configuration saved.
+   *
+   * @see \Drupal\Core\Config\Testing\ConfigSchemaChecker
+   *
+   * @var bool
    */
-  protected $originalSessionName;
+  protected $strictConfigSchema = TRUE;
+
+  /**
+   * HTTP authentication method (specified as a CURLAUTH_* constant).
+   *
+   * @var int
+   * @see http://php.net/manual/en/function.curl-setopt.php
+   */
+  protected $httpAuthMethod = CURLAUTH_BASIC;
+
+  /**
+   * HTTP authentication credentials (<username>:<password>).
+   *
+   * @var string
+   */
+  protected $httpAuthCredentials = NULL;
 
   /**
    * Constructor for Test.
@@ -225,6 +341,23 @@ abstract class TestBase {
    */
   protected function checkRequirements() {
     return array();
+  }
+
+  /**
+   * Helper method to store an assertion record in the configured database.
+   *
+   * This method decouples database access from assertion logic.
+   *
+   * @param array $assertion
+   *   Keyed array representing an assertion, as generated by assert().
+   *
+   * @see self::assert()
+   */
+  protected function storeAssertion(array $assertion) {
+    return self::getDatabaseConnection()
+      ->insert('simpletest')
+      ->fields($assertion)
+      ->execute();
   }
 
   /**
@@ -277,10 +410,7 @@ abstract class TestBase {
     );
 
     // Store assertion for display after the test has completed.
-    self::getDatabaseConnection()
-      ->insert('simpletest')
-      ->fields($assertion)
-      ->execute();
+    $this->storeAssertion($assertion);
 
     // We do not use a ternary operator here to allow a breakpoint on
     // test failure.
@@ -334,6 +464,7 @@ abstract class TestBase {
       'file' => $caller['file'],
     );
 
+    // We can't use storeAssertion() because this method is static.
     return self::getDatabaseConnection()
       ->insert('simpletest')
       ->fields($assertion)
@@ -352,6 +483,7 @@ abstract class TestBase {
    * @see \Drupal\simpletest\TestBase::insertAssert()
    */
   public static function deleteAssert($message_id) {
+    // We can't use storeAssertion() because this method is static.
     return (bool) self::getDatabaseConnection()
       ->delete('simpletest')
       ->condition('message_id', $message_id)
@@ -780,12 +912,13 @@ abstract class TestBase {
     }
 
     TestServiceProvider::$currentTest = $this;
-    $simpletest_config = \Drupal::config('simpletest.settings');
+    $simpletest_config = $this->config('simpletest.settings');
 
     // Unless preset from run-tests.sh, retrieve the current verbose setting.
     if (!isset($this->verbose)) {
       $this->verbose = $simpletest_config->get('verbose');
     }
+
     if ($this->verbose) {
       // Initialize verbose debugging.
       $this->verbose = TRUE;
@@ -798,11 +931,11 @@ abstract class TestBase {
     }
     // HTTP auth settings (<username>:<password>) for the simpletest browser
     // when sending requests to the test site.
-    $this->httpauth_method = (int) $simpletest_config->get('httpauth.method');
+    $this->httpAuthMethod = (int) $simpletest_config->get('httpauth.method');
     $username = $simpletest_config->get('httpauth.username');
     $password = $simpletest_config->get('httpauth.password');
     if (!empty($username) && !empty($password)) {
-      $this->httpauth_credentials = $username . ':' . $password;
+      $this->httpAuthCredentials = $username . ':' . $password;
     }
 
     set_error_handler(array($this, 'errorHandler'));
@@ -899,10 +1032,10 @@ abstract class TestBase {
    *
    * The generated database table prefix is used for the Drupal installation
    * being performed for the test. It is also used as user agent HTTP header
-   * value by the cURL-based browser of DrupalWebTestCase, which is sent to the
-   * Drupal installation of the test. During early Drupal bootstrap, the user
-   * agent HTTP header is parsed, and if it matches, all database queries use
-   * the database table prefix that has been generated here.
+   * value by the cURL-based browser of WebTestBase, which is sent to the Drupal
+   * installation of the test. During early Drupal bootstrap, the user agent
+   * HTTP header is parsed, and if it matches, all database queries use the
+   * database table prefix that has been generated here.
    *
    * @see WebTestBase::curlInitialize()
    * @see drupal_valid_test_ua()
@@ -1046,10 +1179,10 @@ abstract class TestBase {
     file_prepare_directory($this->siteDirectory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS);
 
     // Prepare filesystem directory paths.
-    $this->public_files_directory = $this->siteDirectory . '/files';
-    $this->private_files_directory = $this->siteDirectory . '/private';
-    $this->temp_files_directory = $this->siteDirectory . '/temp';
-    $this->translation_files_directory = $this->siteDirectory . '/translations';
+    $this->publicFilesDirectory = $this->siteDirectory . '/files';
+    $this->privateFilesDirectory = $this->siteDirectory . '/private';
+    $this->tempFilesDirectory = $this->siteDirectory . '/temp';
+    $this->translationFilesDirectory = $this->siteDirectory . '/translations';
 
     $this->generatedTestFiles = FALSE;
 
@@ -1070,7 +1203,7 @@ abstract class TestBase {
 
     // Ensure there is no service container.
     $this->container = NULL;
-    \Drupal::setContainer(NULL);
+    \Drupal::unsetContainer();
 
     // Unset globals.
     unset($GLOBALS['config_directories']);
@@ -1093,6 +1226,7 @@ abstract class TestBase {
     new Settings(array(
       // For performance, simply use the database prefix as hash salt.
       'hash_salt' => $this->databasePrefix,
+      'container_yamls' => [],
     ));
 
     drupal_set_time_limit($this->timeLimit);
@@ -1164,6 +1298,10 @@ abstract class TestBase {
     // log to pick up any fatal errors.
     simpletest_log_read($this->testId, $this->databasePrefix, get_class($this));
 
+    // Restore original dependency injection container.
+    $this->container = $this->originalContainer;
+    \Drupal::setContainer($this->originalContainer);
+
     // Delete test site directory.
     file_unmanaged_delete_recursive($this->siteDirectory, array($this, 'filePreDeleteCallback'));
 
@@ -1182,7 +1320,6 @@ abstract class TestBase {
     new Settings($this->originalSettings);
 
     // Restore original statics and globals.
-    \Drupal::setContainer($this->originalContainer);
     $GLOBALS['config_directories'] = $this->originalConfigDirectories;
 
     // Re-initialize original stream wrappers of the parent site.
@@ -1213,7 +1350,6 @@ abstract class TestBase {
    */
   public function errorHandler($severity, $message, $file = NULL, $line = NULL) {
     if ($severity & error_reporting()) {
-      require_once DRUPAL_ROOT . '/core/includes/errors.inc';
       $error_map = array(
         E_STRICT => 'Run-time notice',
         E_WARNING => 'Warning',
@@ -1248,7 +1384,6 @@ abstract class TestBase {
    * @see set_exception_handler
    */
   protected function exceptionHandler($exception) {
-    require_once DRUPAL_ROOT . '/core/includes/errors.inc';
     $backtrace = $exception->getTrace();
     $verbose_backtrace = $backtrace;
     // Push on top of the backtrace the call that generated the exception.
@@ -1475,6 +1610,7 @@ abstract class TestBase {
         $this->container->get('lock'),
         $this->container->get('config.typed'),
         $this->container->get('module_handler'),
+        $this->container->get('module_installer'),
         $this->container->get('theme_handler'),
         $this->container->get('string_translation')
       );
@@ -1497,4 +1633,18 @@ abstract class TestBase {
       $target_storage->write($name, $source_storage->read($name));
     }
   }
+
+  /**
+   * Configuration accessor for tests. Returns non-overriden configuration.
+   *
+   * @param $name
+   *   Configuration name.
+   *
+   * @return \Drupal\Core\Config\Config
+   *   The configuration object with original configuration data.
+   */
+  protected function config($name) {
+    return \Drupal::configFactory()->getEditable($name);
+  }
+
 }

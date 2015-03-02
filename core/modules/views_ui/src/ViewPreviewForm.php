@@ -8,6 +8,7 @@
 namespace Drupal\views_ui;
 
 use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Url;
 
 /**
  * Form controller for the Views preview form.
@@ -33,6 +34,12 @@ class ViewPreviewForm extends ViewFormBase {
     $form_state->disableCache();
 
     $form['controls']['#attributes'] = array('class' => array('clearfix'));
+
+    $form['controls']['title'] = array(
+      '#prefix' => '<h2 class="view-preview-form__title">',
+      '#markup' => $this->t('Preview'),
+      '#suffix' => '</h2>',
+    );
 
     // Add a checkbox controlling whether or not this display auto-previews.
     $form['controls']['live_preview'] = array(
@@ -61,7 +68,7 @@ class ViewPreviewForm extends ViewFormBase {
         '#weight' => 110,
         '#theme_wrappers' => array('container'),
         '#attributes' => array('id' => 'views-live-preview'),
-        '#markup' => $view->renderPreview($this->displayID, $args),
+        'preview' => $view->renderPreview($this->displayID, $args),
       );
     }
     $uri = $view->urlInfo('preview-form');
@@ -87,7 +94,7 @@ class ViewPreviewForm extends ViewFormBase {
         '#submit' => array('::submitPreview'),
         '#id' => 'preview-submit',
         '#ajax' => array(
-          'path' => 'admin/structure/views/view/' . $view->id() . '/preview/' . $this->displayID,
+          'url' => Url::fromRoute('entity.view.preview_form', ['view' => $view->id(), 'display_id' => $this->displayID]),
           'wrapper' => 'views-preview-wrapper',
           'event' => 'click',
           'progress' => array('type' => 'fullscreen'),

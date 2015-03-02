@@ -118,7 +118,7 @@ class SimpletestResultsForm extends FormBase {
     }
 
     // Load all classes and include CSS.
-    $form['#attached']['css'][] = drupal_get_path('module', 'simpletest') . '/css/simpletest.module.css';
+    $form['#attached']['library'][] = 'simpletest/drupal.simpletest';
 
     // Keep track of which test cases passed or failed.
     $filter = array(
@@ -153,7 +153,7 @@ class SimpletestResultsForm extends FormBase {
     $form['result']['results'] = array();
     foreach ($results as $group => $assertions) {
       // Create group details with summary information.
-      $info = TestDiscovery::getTestInfo(new \ReflectionClass($group));
+      $info = TestDiscovery::getTestInfo($group);
       $form['result']['results'][$group] = array(
         '#type' => 'details',
         '#title' => $info['name'],

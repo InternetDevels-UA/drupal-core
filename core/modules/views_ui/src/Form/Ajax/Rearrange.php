@@ -9,7 +9,7 @@ namespace Drupal\views_ui\Form\Ajax;
 
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Url;
-use Drupal\views\ViewStorageInterface;
+use Drupal\views\ViewEntityInterface;
 use Drupal\views\ViewExecutable;
 
 /**
@@ -34,7 +34,7 @@ class Rearrange extends ViewsFormBase {
   /**
    * {@inheritdoc}
    */
-  public function getForm(ViewStorageInterface $view, $display_id, $js, $type = NULL) {
+  public function getForm(ViewEntityInterface $view, $display_id, $js, $type = NULL) {
     $this->setType($type);
     return parent::getForm($view, $display_id, $js);
   }
@@ -56,7 +56,10 @@ class Rearrange extends ViewsFormBase {
 
     $types = ViewExecutable::getHandlerTypes();
     $executable = $view->getExecutable();
-    $executable->setDisplay($display_id);
+    if (!$executable->setDisplay($display_id)) {
+      $form['markup'] = array('#markup' => $this->t('Invalid display id @display', array('@display' => $display_id)));
+      return $form;
+    }
     $display = &$executable->displayHandlers->get($display_id);
     $form['#title'] = $this->t('Rearrange @type', array('@type' => $types[$type]['ltitle']));
     $form['#section'] = $display_id . 'rearrange-item';

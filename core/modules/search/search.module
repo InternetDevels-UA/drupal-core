@@ -78,10 +78,10 @@ function search_help($route_name, RouteMatchInterface $route_match) {
       $output .= '<h3>' . t('Uses') . '</h3>';
       $output .= '<dl>';
       $output .= '<dt>' . t('Configuring search pages') . '</dt>';
-      $output .= '<dd>' . t('To configure search pages, visit the <a href="!search-settings">Search pages page</a>. In the Search pages section, you can add a new search page, edit the configuration of existing search pages, enable and disable search pages, and choose the default search page. Each enabled search page has a URL path starting with <em>search</em>, and each will appear as a tab or local task link on the <a href="!search-url">search page</a>; you can configure the text that is shown in the tab. In addition, some search page plugins have additional settings that you can configure for each search page.', array('!search-settings' => \Drupal::url('search.settings'), '!search-url' => \Drupal::url('search.view'))) . '</dd>';
+      $output .= '<dd>' . t('To configure search pages, visit the <a href="!search-settings">Search pages page</a>. In the Search pages section, you can add a new search page, edit the configuration of existing search pages, enable and disable search pages, and choose the default search page. Each enabled search page has a URL path starting with <em>search</em>, and each will appear as a tab or local task link on the <a href="!search-url">search page</a>; you can configure the text that is shown in the tab. In addition, some search page plugins have additional settings that you can configure for each search page.', array('!search-settings' => \Drupal::url('entity.search_page.collection'), '!search-url' => \Drupal::url('search.view'))) . '</dd>';
       $output .= '<dt>' . t('Managing the search index') . '</dt>';
-      $output .= '<dd>' . t('Some search page plugins, such as the core Content search page, index searchable text using the Drupal core search index, and will not work unless content is indexed. Indexing is done during <em>cron</em> runs, so it requires a <a href="!cron">cron maintenance task</a> to be set up. There are also several settings affecting indexing that can be configured on the <a href="!search-settings">Search pages page</a>: the number of items to index per cron run, the minimum word length to index, and how to handle Chinese, Japanese, and Korean characters.', array('!cron' => \Drupal::url('system.cron_settings'), '!search-settings' => \Drupal::url('search.settings'))) . '</dd>';
-      $output .= '<dd>' . t('Modules providing search page plugins generally ensure that content-related actions on your site (creating, editing, or deleting content and comments) automatically cause affected content items to be marked for indexing or reindexing at the next cron run. When content is marked for reindexing, the previous content remains in the index until cron runs, at which time it is replaced by the new content. However, there are some actions related to the structure of your site that do not cause affected content to be marked for reindexing. Examples of structure-related actions that affect content include deleting or editing taxonomy terms, enabling or disabling modules that add text to content (such as Taxonomy, Comment, and field-providing modules), and modifying the fields or display parameters of your content types. If you take one of these actions and you want to ensure that the search index is updated to reflect your changed site structure, you can mark all content for reindexing by clicking the "Re-index site" button on the <a href="!search-settings">Search pages page</a>. If you have a lot of content on your site, it may take several cron runs for the content to be reindexed.', array('!search-settings' => \Drupal::url('search.settings'))) . '</dd>';
+      $output .= '<dd>' . t('Some search page plugins, such as the core Content search page, index searchable text using the Drupal core search index, and will not work unless content is indexed. Indexing is done during <em>cron</em> runs, so it requires a <a href="!cron">cron maintenance task</a> to be set up. There are also several settings affecting indexing that can be configured on the <a href="!search-settings">Search pages page</a>: the number of items to index per cron run, the minimum word length to index, and how to handle Chinese, Japanese, and Korean characters.', array('!cron' => \Drupal::url('system.cron_settings'), '!search-settings' => \Drupal::url('entity.search_page.collection'))) . '</dd>';
+      $output .= '<dd>' . t('Modules providing search page plugins generally ensure that content-related actions on your site (creating, editing, or deleting content and comments) automatically cause affected content items to be marked for indexing or reindexing at the next cron run. When content is marked for reindexing, the previous content remains in the index until cron runs, at which time it is replaced by the new content. However, there are some actions related to the structure of your site that do not cause affected content to be marked for reindexing. Examples of structure-related actions that affect content include deleting or editing taxonomy terms, enabling or disabling modules that add text to content (such as Taxonomy, Comment, and field-providing modules), and modifying the fields or display parameters of your content types. If you take one of these actions and you want to ensure that the search index is updated to reflect your changed site structure, you can mark all content for reindexing by clicking the "Re-index site" button on the <a href="!search-settings">Search pages page</a>. If you have a lot of content on your site, it may take several cron runs for the content to be reindexed.', array('!search-settings' => \Drupal::url('entity.search_page.collection'))) . '</dd>';
       $output .= '<dt>' . t('Displaying the Search block') . '</dt>';
       $output .= '<dd>' . t('The Search module includes a block, which can be enabled and configured on the <a href="!blocks">Block layout page</a>, if you have the Block module enabled; the default block title is Search, and it is the Search form block in the Forms category, if you wish to add another instance. The block is available to users with the <a href="!search_permission">Use search</a> permission, and it performs a search using the configured default search page.', array('!blocks' => (\Drupal::moduleHandler()->moduleExists('block')) ? \Drupal::url('block.admin_display') : '#', '!search_permission' => \Drupal::url('user.admin_permissions', array(), array('fragment' => 'module-search')))) . '</dd>';
       $output .= '<dt>' . t('Searching your site') . '</dt>';
@@ -91,7 +91,7 @@ function search_help($route_name, RouteMatchInterface $route_match) {
       $output .= '</dl>';
       return $output;
 
-    case 'search.settings':
+    case 'entity.search_page.collection':
       return '<p>' . t('The search engine maintains an index of words found in your site\'s content. To build and maintain this index, a correctly configured <a href="!cron">cron maintenance task</a> is required. Indexing behavior can be adjusted using the settings below.', array('!cron' => \Drupal::url('system.status'))) . '</p>';
   }
 }
@@ -114,49 +114,44 @@ function search_theme() {
 function search_preprocess_block(&$variables) {
   if ($variables['plugin_id'] == 'search_form_block') {
     $variables['attributes']['role'] = 'search';
-    $variables['attributes']['class'][] = 'container-inline';
   }
 }
 
 /**
  * Clears either a part of, or the entire search index.
  *
- * @param $sid
- *   (optional) The ID of the item to remove from the search index. If
- *   specified, $type must also be given. Omit both $sid and $type to clear
- *   the entire search index.
+ * This function is meant for use by search page plugins, or for building a
+ * user interface that lets users clear all or parts of the search index.
+ *
  * @param $type
- *   (optional) The plugin ID or other machine-readable type for the item to
- *   remove from the search index.
+ *   (optional) The plugin ID or other machine-readable type for the items to
+ *   remove from the search index. If omitted, $sid and $langcode are ignored
+ *   and the entire search index is cleared.
+ * @param $sid
+ *   (optional) The ID of the items to remove from the search index. If
+ *   omitted, all items matching $type are cleared, and $langcode is ignored.
  * @param $langcode
- *   (optional) Language code for the operation. If not provided, all
- *   index records for the $sid and $type will be deleted.
+ *   (optional) Language code of the item to remove from the search index. If
+ *   omitted, all items matching $sid and $type are cleared.
  */
-function search_reindex($sid = NULL, $type = NULL, $langcode = NULL) {
-  if ($type == NULL && $sid == NULL) {
-    /** @var $search_page_repository \Drupal\search\SearchPageRepositoryInterface */
-    $search_page_repository = \Drupal::service('search.search_page_repository');
-    foreach ($search_page_repository->getIndexableSearchPages() as $entity) {
-      $entity->getPlugin()->resetIndex();
+function search_index_clear($type = NULL, $sid = NULL, $langcode = NULL) {
+  $query_index = db_delete('search_index');
+  $query_dataset = db_delete('search_dataset');
+  if ($type) {
+    $query_index->condition('type', $type);
+    $query_dataset->condition('type', $type);
+    if ($sid) {
+      $query_index->condition('sid', $sid);
+      $query_dataset->condition('sid', $sid);
+      if ($langcode) {
+        $query_index->condition('langcode', $langcode);
+        $query_dataset->condition('langcode', $langcode);
+      }
     }
   }
-  else {
-    $query = db_delete('search_dataset')
-      ->condition('sid', $sid)
-      ->condition('type', $type);
-    if (!empty($langcode)) {
-      $query->condition('langcode', $langcode);
-    }
-    $query->execute();
 
-    $query = db_delete('search_index')
-      ->condition('sid', $sid)
-      ->condition('type', $type);
-    if (!empty($langcode)) {
-      $query->condition('langcode', $langcode);
-    }
-    $query->execute();
-  }
+  $query_index->execute();
+  $query_dataset->execute();
 }
 
 /**
@@ -372,19 +367,19 @@ function search_invoke_preprocess(&$text, $langcode = NULL) {
 /**
  * Updates the full-text search index for a particular item.
  *
- * @param $sid
- *   An ID number identifying this particular item (e.g., node ID).
  * @param $type
  *   The plugin ID or other machine-readable type of this item,
  *   which should be less than 64 bytes.
- * @param $text
- *   The content of this item. Must be a piece of HTML or plain text.
+ * @param $sid
+ *   An ID number identifying this particular item (e.g., node ID).
  * @param $langcode
  *   Language code for text being indexed.
+ * @param $text
+ *   The content of this item. Must be a piece of HTML or plain text.
  *
  * @ingroup search
  */
-function search_index($sid, $type, $text, $langcode) {
+function search_index($type, $sid, $langcode, $text) {
   $minimum_word_size = \Drupal::config('search.settings')->get('index.minimum_word_size');
 
   // Multipliers for scores of words inside certain HTML tags. The weights are
@@ -474,7 +469,7 @@ function search_index($sid, $type, $text, $langcode) {
     $tag = !$tag;
   }
 
-  search_reindex($sid, $type, $langcode);
+  search_index_clear($type, $sid, $langcode);
 
   // Insert cleaned up data into dataset
   db_insert('search_dataset')
@@ -507,22 +502,41 @@ function search_index($sid, $type, $text, $langcode) {
 }
 
 /**
- * Changes the timestamp on an indexed item to 'now' to force reindexing.
+ * Changes the timestamp on indexed items to 'now' to force reindexing.
  *
- * @param $type
- *   The plugin ID or other machine-readable type of this item.
- * @param $sid
- *   An ID number identifying this particular item (e.g., node ID).
+ * This function is meant for use by search page plugins, or for building a
+ * user interface that lets users mark all or parts of the search index for
+ * reindexing.
+ *
+ * @param string $type
+ *   (optional) The plugin ID or other machine-readable type of this item. If
+ *   omitted, the entire search index is marked for reindexing, and $sid and
+ *   $langcode are ignored.
+ * @param int $sid
+ *   (optional) An ID number identifying this particular item (e.g., node ID).
+ *   If omitted, everything matching $type is marked, and $langcode is ignored.
+ * @param string $langcode
+ *   (optional) The language code to clear. If omitted, everything matching
+ *   $type and $sid is marked.
  */
-function search_mark_for_reindex($type, $sid) {
-  db_update('search_dataset')
+function search_mark_for_reindex($type = NULL, $sid = NULL, $langcode = NULL) {
+  $query = db_update('search_dataset')
     ->fields(array('reindex' => REQUEST_TIME))
-    ->condition('type', $type)
-    ->condition('sid', $sid)
     // Only mark items that were not previously marked for reindex, so that
     // marked items maintain their priority by request time.
-    ->condition('reindex', 0)
-    ->execute();
+    ->condition('reindex', 0);
+
+  if ($type) {
+    $query->condition('type', $type);
+    if ($sid) {
+      $query->condition('sid', $sid);
+      if ($langcode) {
+        $query->condition('langcode', $langcode);
+      }
+    }
+  }
+
+  $query->execute();
 }
 
 /**

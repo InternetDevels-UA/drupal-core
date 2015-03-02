@@ -32,20 +32,17 @@ class LanguageUnitTest extends UnitTestCase {
   }
 
   /**
-   * @covers ::getName()
-   * @covers ::setName()
+   * @covers ::getName
    */
   public function testGetName() {
     $name = $this->randomMachineName();
     $language_code = $this->randomMachineName(2);
     $language = new Language(array('id' => $language_code, 'name' => $name));
     $this->assertSame($name, $language->getName());
-    $new_name = $this->randomMachineName();
-    $this->assertSame($new_name, $language->setName($new_name)->getName());
   }
 
   /**
-   * @covers ::getId()
+   * @covers ::getId
    */
   public function testGetLangcode() {
     $language_code = $this->randomMachineName(2);
@@ -54,7 +51,7 @@ class LanguageUnitTest extends UnitTestCase {
   }
 
   /**
-   * @covers ::getDirection()
+   * @covers ::getDirection
    */
   public function testGetDirection() {
     $language_code = $this->randomMachineName(2);
@@ -63,7 +60,7 @@ class LanguageUnitTest extends UnitTestCase {
   }
 
   /**
-   * @covers ::isDefault()
+   * @covers ::isDefault
    */
   public function testIsDefault() {
     $language_default = $this->getMockBuilder('Drupal\Core\Language\LanguageDefault')->disableOriginalConstructor()->getMock();
@@ -91,7 +88,7 @@ class LanguageUnitTest extends UnitTestCase {
   /**
    * Tests sorting an array of language objects.
    *
-   * @covers ::sort()
+   * @covers ::sort
    *
    * @dataProvider providerTestSortArrayOfLanguages
    *

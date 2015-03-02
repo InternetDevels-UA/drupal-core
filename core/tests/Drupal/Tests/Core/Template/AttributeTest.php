@@ -64,7 +64,7 @@ class AttributeTest extends UnitTestCase {
 
   /**
    * Tests setting attributes.
-   * @covers ::setAttribute()
+   * @covers ::setAttribute
    */
   public function testSetAttribute() {
     $attribute = new Attribute();
@@ -92,7 +92,7 @@ class AttributeTest extends UnitTestCase {
 
   /**
    * Tests removing attributes.
-   * @covers ::removeAttribute()
+   * @covers ::removeAttribute
    */
   public function testRemoveAttribute() {
     $attributes = [
@@ -131,7 +131,7 @@ class AttributeTest extends UnitTestCase {
 
   /**
    * Tests adding class attributes with the AttributeArray helper method.
-   * @covers ::addClass()
+   * @covers ::addClass
    */
   public function testAddClasses() {
     // Add empty Attribute object with no classes.
@@ -183,7 +183,7 @@ class AttributeTest extends UnitTestCase {
 
   /**
    * Tests removing class attributes with the AttributeArray helper method.
-   * @covers ::removeClass()
+   * @covers ::removeClass
    */
   public function testRemoveClasses() {
     // Add duplicate class to ensure that both duplicates are removed.
@@ -214,7 +214,7 @@ class AttributeTest extends UnitTestCase {
 
   /**
    * Tests checking for class names with the Attribute method.
-   * @covers ::hasClass()
+   * @covers ::hasClass
    */
   public function testHasClass() {
     // Test an attribute without any classes.
@@ -229,8 +229,8 @@ class AttributeTest extends UnitTestCase {
 
   /**
    * Tests removing class attributes with the Attribute helper methods.
-   * @covers ::removeClass()
-   * @covers ::addClass()
+   * @covers ::removeClass
+   * @covers ::addClass
    */
   public function testChainAddRemoveClasses() {
     $attribute = new Attribute(
@@ -249,8 +249,8 @@ class AttributeTest extends UnitTestCase {
    * Tests the twig calls to the Attribute.
    * @dataProvider providerTestAttributeClassHelpers
    *
-   * @covers ::removeClass()
-   * @covers ::addClass()
+   * @covers ::removeClass
+   * @covers ::addClass
    */
   public function testTwigAddRemoveClasses($template, $expected, $seed_attributes = array()) {
     $loader = new \Twig_Loader_String();
@@ -331,13 +331,84 @@ class AttributeTest extends UnitTestCase {
 
     $content = $this->randomMachineName();
     $html = '<div' . (string) $attribute . '>' . $content . '</div>';
-    $this->assertSelectEquals('div.example-class', $content, 1, $html);
-    $this->assertSelectEquals('div.example-class2', $content, 0, $html);
+    $this->assertClass('example-class', $html);
+    $this->assertNoClass('example-class2', $html);
 
-    $this->assertSelectEquals('div#example-id', $content, 1, $html);
-    $this->assertSelectEquals('div#example-id2', $content, 0, $html);
+    $this->assertID('example-id', $html);
+    $this->assertNoID('example-id2', $html);
 
     $this->assertTrue(strpos($html, 'enabled') !== FALSE);
+  }
+
+  /**
+   * Checks that the given CSS class is present in the given HTML snippet.
+   *
+   * @param string $class
+   *   The CSS class to check.
+   * @param string $html
+   *   The HTML snippet to check.
+   */
+  protected function assertClass($class, $html) {
+    $xpath = "//*[@class='$class']";
+    self::assertTrue((bool) $this->getXPathResultCount($xpath, $html));
+  }
+
+  /**
+   * Checks that the given CSS class is not present in the given HTML snippet.
+   *
+   * @param string $class
+   *   The CSS class to check.
+   * @param string $html
+   *   The HTML snippet to check.
+   */
+  protected function assertNoClass($class, $html) {
+    $xpath = "//*[@class='$class']";
+    self::assertFalse((bool) $this->getXPathResultCount($xpath, $html));
+  }
+
+  /**
+   * Checks that the given CSS ID is present in the given HTML snippet.
+   *
+   * @param string $id
+   *   The CSS ID to check.
+   * @param string $html
+   *   The HTML snippet to check.
+   */
+  protected function assertID($id, $html) {
+    $xpath = "//*[@id='$id']";
+    self::assertTrue((bool) $this->getXPathResultCount($xpath, $html));
+  }
+
+  /**
+   * Checks that the given CSS ID is not present in the given HTML snippet.
+   *
+   * @param string $id
+   *   The CSS ID to check.
+   * @param string $html
+   *   The HTML snippet to check.
+   */
+  protected function assertNoID($id, $html) {
+    $xpath = "//*[@id='$id']";
+    self::assertFalse((bool) $this->getXPathResultCount($xpath, $html));
+  }
+
+  /**
+   * Counts the occurrences of the given XPath query in a given HTML snippet.
+   *
+   * @param string $query
+   *   The XPath query to execute.
+   * @param string $html
+   *   The HTML snippet to check.
+   *
+   * @return int
+   *   The number of results that are found.
+   */
+  protected function getXPathResultCount($query, $html) {
+    $document = new \DOMDocument;
+    $document->loadHTML($html);
+    $xpath = new \DOMXPath($document);
+
+    return $xpath->query($query)->length;
   }
 
   /**

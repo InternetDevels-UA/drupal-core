@@ -42,7 +42,8 @@ class FieldInstanceDefaults extends ProcessPluginBase {
 
       case 'date_select':
         if (!empty($widget_settings['default_value'])) {
-          $default['value'] = $widget_settings['default_value'];
+          $default['default_date_type'] = 'relative';
+          $default['default_date'] = $widget_settings['default_value'];
         }
         break;
 
@@ -56,6 +57,7 @@ class FieldInstanceDefaults extends ProcessPluginBase {
         if (!empty($widget_settings['default_value'][0]['url'])) {
           $default['title'] = $widget_settings['default_value'][0]['title'];
           $default['url'] = $widget_settings['default_value'][0]['url'];
+          $default['options'] = ['attributes' => []];
         }
         break;
     }

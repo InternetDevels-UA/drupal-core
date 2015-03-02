@@ -7,6 +7,7 @@
 
 namespace Drupal\views\Plugin\views\style;
 
+use Drupal\Component\Utility\Html;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\views\Plugin\views\PluginBase;
 use Drupal\views\Plugin\views\display\DisplayPluginBase;
@@ -190,7 +191,7 @@ abstract class StylePluginBase extends PluginBase {
   public function usesTokens() {
     if ($this->usesRowClass()) {
       $class = $this->options['row_class'];
-      if (strpos($class, '[') !== FALSE || strpos($class, '!') !== FALSE || strpos($class, '%') !== FALSE) {
+      if (strpos($class, '{{') !== FALSE || strpos($class, '!') !== FALSE || strpos($class, '%') !== FALSE) {
         return TRUE;
       }
     }
@@ -217,7 +218,7 @@ abstract class StylePluginBase extends PluginBase {
 
       $classes = explode(' ', $class);
       foreach ($classes as &$class) {
-        $class = drupal_clean_css_identifier($class);
+        $class = Html::cleanCssIdentifier($class);
       }
       return implode(' ', $classes);
     }
@@ -227,18 +228,15 @@ abstract class StylePluginBase extends PluginBase {
    * Take a value and apply token replacement logic to it.
    */
   public function tokenizeValue($value, $row_index) {
-    if (strpos($value, '[') !== FALSE || strpos($value, '!') !== FALSE || strpos($value, '%') !== FALSE) {
+    if (strpos($value, '{{') !== FALSE || strpos($value, '!') !== FALSE || strpos($value, '%') !== FALSE) {
       // Row tokens might be empty, for example for node row style.
       $tokens = isset($this->rowTokens[$row_index]) ? $this->rowTokens[$row_index] : array();
       if (!empty($this->view->build_info['substitutions'])) {
         $tokens += $this->view->build_info['substitutions'];
       }
 
-      if ($tokens) {
-        $value = strtr($value, $tokens);
-      }
+      $value = $this->viewsTokenReplace($value, $tokens);
     }
-
     return $value;
   }
 
@@ -688,7 +686,7 @@ abstract class StylePluginBase extends PluginBase {
    * @param $field
    *    The id of the field.
    */
-  protected function getFieldValue($index, $field) {
+  public function getFieldValue($index, $field) {
     $this->view->row_index = $index;
     $value = $this->view->field[$field]->getValue($this->view->result[$index]);
     unset($this->view->row_index);

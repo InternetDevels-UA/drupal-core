@@ -33,7 +33,7 @@ class EngineTwigTest extends WebTestBase {
    * Tests that the Twig engine handles PHP data correctly.
    */
   function testTwigVariableDataTypes() {
-    \Drupal::config('system.theme')
+    $this->config('system.theme')
       ->set('default', 'test_theme')
       ->save();
     $this->drupalGet('twig-theme-test/php-variables');
@@ -57,7 +57,7 @@ class EngineTwigTest extends WebTestBase {
       'url (as route) absolute with fragment: ' . $url_generator->generateFromRoute('user.register', array(), array('absolute' => TRUE, 'fragment' => 'bottom')),
     );
     // Make sure we got something.
-    $content = $this->drupalGetContent();
+    $content = $this->getRawContent();
     $this->assertFalse(empty($content), 'Page content is not empty');
     foreach ($expected as $string) {
       $this->assertRaw('<div>' . $string . '</div>');
@@ -65,7 +65,7 @@ class EngineTwigTest extends WebTestBase {
   }
 
   /**
-   * Tests the link_generator twig functions.
+   * Tests the link_generator Twig functions.
    */
   public function testTwigLinkGenerator() {
     $this->drupalGet('twig-theme-test/link-generator');
@@ -81,6 +81,34 @@ class EngineTwigTest extends WebTestBase {
     foreach ($expected as $string) {
       $this->assertRaw('<div>' . $string . '</div>');
     }
+  }
+
+  /**
+   * Tests the magic url to string Twig functions.
+   *
+   * @see \Drupal\Core\Url
+   */
+  public function testTwigUrlToString() {
+    $this->drupalGet('twig-theme-test/url-to-string');
+
+    $expected = [
+      'rendered url: ' . Url::fromRoute('user.register')->toString(),
+    ];
+
+    $content = $this->getRawContent();
+    $this->assertFalse(empty($content), 'Page content is not empty');
+    foreach ($expected as $string) {
+      $this->assertRaw('<div>' . $string . '</div>');
+    }
+  }
+
+  /**
+   * Tests the automatic/magic calling of toString() on objects, if exists.
+   */
+  public function testTwigFileUrls() {
+    $this->drupalGet('/twig-theme-test/file-url');
+    $filepath = file_create_url('core/modules/system/tests/modules/twig_theme_test/twig_theme_test.js');
+    $this->assertRaw('<div>file_url: ' . $filepath . '</div>');
   }
 
 }

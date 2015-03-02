@@ -81,6 +81,13 @@ class ConfigNamesMapperTest extends UnitTestCase {
    */
   protected $urlGenerator;
 
+  /**
+   * The mocked language manager.
+   *
+   * @var \Drupal\Core\Language\LanguageManagerInterface $language_manager|\PHPUnit_Framework_MockObject_MockObject
+   */
+  protected $languageManager;
+
   protected function setUp() {
     $this->routeProvider = $this->getMock('Drupal\Core\Routing\RouteProviderInterface');
 
@@ -113,6 +120,8 @@ class ConfigNamesMapperTest extends UnitTestCase {
       ->with('system.site_information_settings')
       ->will($this->returnValue($this->baseRoute));
 
+    $this->languageManager = $this->getMock('Drupal\Core\Language\LanguageManagerInterface');
+
     $this->configNamesMapper = new TestConfigNamesMapper(
       'system.site_information_settings',
       $this->pluginDefinition,
@@ -121,7 +130,8 @@ class ConfigNamesMapperTest extends UnitTestCase {
       $this->localeConfigManager,
       $this->configMapperManager,
       $this->routeProvider,
-      $this->getStringTranslationStub()
+      $this->getStringTranslationStub(),
+      $this->languageManager
     );
   }
 
@@ -192,7 +202,7 @@ class ConfigNamesMapperTest extends UnitTestCase {
   public function testGetOverviewRoute() {
     $expected = new Route('/admin/config/system/site-information/translate',
       array(
-        '_content' => '\Drupal\config_translation\Controller\ConfigTranslationController::itemPage',
+        '_controller' => '\Drupal\config_translation\Controller\ConfigTranslationController::itemPage',
         'plugin_id' => 'system.site_information_settings',
       ),
       array(

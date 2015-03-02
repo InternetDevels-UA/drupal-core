@@ -9,6 +9,7 @@ namespace Drupal\entity_reference\Tests;
 
 use Drupal\Component\Utility\String;
 use Drupal\config\Tests\AssertConfigEntityImportTrait;
+use Drupal\Core\Config\Entity\ConfigEntityBase;
 use Drupal\field\Entity\FieldConfig;
 use Drupal\simpletest\WebTestBase;
 
@@ -55,7 +56,7 @@ class EntityReferenceIntegrationTest extends WebTestBase {
     parent::setUp();
 
     // Create a test user.
-    $web_user = $this->drupalCreateUser(array('administer entity_test content', 'administer entity_test fields'));
+    $web_user = $this->drupalCreateUser(array('administer entity_test content', 'administer entity_test fields', 'view test entity'));
     $this->drupalLogin($web_user);
   }
 
@@ -85,7 +86,11 @@ class EntityReferenceIntegrationTest extends WebTestBase {
       // Try to post the form again with no modification and check if the field
       // values remain the same.
       $entity = current(entity_load_multiple_by_properties($this->entityType, array('name' => $entity_name)));
-      $this->drupalPostForm($this->entityType . '/manage/' . $entity->id(), array(), t('Save'));
+      $this->drupalGet($this->entityType . '/manage/' . $entity->id());
+      $this->assertFieldByName($this->fieldName . '[0][target_id]', $referenced_entities[0]->label() . ' (' . $referenced_entities[0]->id() . ')');
+      $this->assertFieldByName($this->fieldName . '[1][target_id]', $referenced_entities[1]->label() . ' (' . $referenced_entities[1]->id() . ')');
+
+      $this->drupalPostForm(NULL, array(), t('Save'));
       $this->assertFieldValues($entity_name, $referenced_entities);
 
       // Test the 'entity_reference_autocomplete_tags' widget.
@@ -107,7 +112,10 @@ class EntityReferenceIntegrationTest extends WebTestBase {
       // Try to post the form again with no modification and check if the field
       // values remain the same.
       $entity = current(entity_load_multiple_by_properties($this->entityType, array('name' => $entity_name)));
-      $this->drupalPostForm($this->entityType . '/manage/' . $entity->id(), array(), t('Save'));
+      $this->drupalGet($this->entityType . '/manage/' . $entity->id());
+      $this->assertFieldByName($this->fieldName . '[target_id]', $target_id . ' (' . $referenced_entities[1]->id() . ')');
+
+      $this->drupalPostForm(NULL, array(), t('Save'));
       $this->assertFieldValues($entity_name, $referenced_entities);
 
       // Test all the other widgets supported by the entity reference field.
@@ -145,6 +153,9 @@ class EntityReferenceIntegrationTest extends WebTestBase {
       // Ensure that the field can be imported without change even after the
       // default value deleted.
       $referenced_entities[0]->delete();
+      // Reload the field since deleting the default value can change the field.
+      \Drupal::entityManager()->getStorage($field->getEntityTypeId())->resetCache([$field->id()]);
+      $field = FieldConfig::loadByName($this->entityType, $this->bundle, $this->fieldName);
       $this->assertConfigEntityImport($field);
 
       // Once the default value has been removed after saving the dependency

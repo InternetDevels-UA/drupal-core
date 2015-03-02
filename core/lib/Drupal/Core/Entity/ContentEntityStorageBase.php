@@ -45,6 +45,16 @@ abstract class ContentEntityStorageBase extends EntityStorageBase implements Dyn
   /**
    * {@inheritdoc}
    */
+  public function hasData() {
+    return (bool) $this->getQuery()
+      ->accessCheck(FALSE)
+      ->range(0, 1)
+      ->execute();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
   protected function doCreate(array $values) {
     // We have to determine the bundle first.
     $bundle = FALSE;
@@ -120,7 +130,7 @@ abstract class ContentEntityStorageBase extends EntityStorageBase implements Dyn
    * Reads values to be purged for a single field.
    *
    * This method is called during field data purge, on fields for which
-   * onFieldDelete() or onFieldDelete() has previously run.
+   * onFieldDefinitionDelete() has previously run.
    *
    * @param \Drupal\Core\Field\FieldDefinitionInterface $field_definition
    *   The field definition.
@@ -167,6 +177,16 @@ abstract class ContentEntityStorageBase extends EntityStorageBase implements Dyn
         $this->invokeHook('translation_delete', $entity->getTranslation($langcode));
       }
     }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  protected function invokeHook($hook, EntityInterface $entity) {
+    if ($hook == 'presave') {
+      $this->invokeFieldMethod('preSave', $entity);
+    }
+    parent::invokeHook($hook, $entity);
   }
 
   /**

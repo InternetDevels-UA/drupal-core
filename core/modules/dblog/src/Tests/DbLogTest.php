@@ -26,28 +26,32 @@ class DbLogTest extends WebTestBase {
    *
    * @var array
    */
-  public static $modules = array('dblog', 'node', 'forum', 'help');
+  public static $modules = array('dblog', 'node', 'forum', 'help', 'block');
 
   /**
    * A user with some relevant administrative permissions.
    *
-   * @var object
+   * @var \Drupal\user\UserInterface
    */
-  protected $big_user;
+  protected $adminUser;
 
   /**
    * A user without any permissions.
    *
-   * @var object
+   * @var \Drupal\user\UserInterface
    */
-  protected $any_user;
+  protected $webUser;
 
+  /**
+   * {@inheritdoc}
+   */
   protected function setUp() {
     parent::setUp();
+    $this->drupalPlaceBlock('system_breadcrumb_block');
 
     // Create users with specific permissions.
-    $this->big_user = $this->drupalCreateUser(array('administer site configuration', 'access administration pages', 'access site reports', 'administer users'));
-    $this->any_user = $this->drupalCreateUser(array());
+    $this->adminUser = $this->drupalCreateUser(array('administer site configuration', 'access administration pages', 'access site reports', 'administer users'));
+    $this->webUser = $this->drupalCreateUser(array());
   }
 
   /**
@@ -59,7 +63,7 @@ class DbLogTest extends WebTestBase {
    */
   function testDbLog() {
     // Login the admin user.
-    $this->drupalLogin($this->big_user);
+    $this->drupalLogin($this->adminUser);
 
     $row_limit = 100;
     $this->verifyRowLimit($row_limit);
@@ -77,7 +81,7 @@ class DbLogTest extends WebTestBase {
     }
 
     // Login the regular user.
-    $this->drupalLogin($this->any_user);
+    $this->drupalLogin($this->webUser);
     $this->verifyReports(403);
   }
 
@@ -95,7 +99,7 @@ class DbLogTest extends WebTestBase {
     $this->assertResponse(200);
 
     // Check row limit variable.
-    $current_limit = \Drupal::config('dblog.settings')->get('row_limit');
+    $current_limit = $this->config('dblog.settings')->get('row_limit');
     $this->assertTrue($current_limit == $row_limit, format_string('[Cache] Row limit variable of @count equals row limit of @limit', array('@count' => $current_limit, '@limit' => $row_limit)));
   }
 
@@ -141,8 +145,8 @@ class DbLogTest extends WebTestBase {
       'variables'   => array(),
       'severity'    => $severity,
       'link'        => NULL,
-      'user'        => $this->big_user,
-      'uid'         => $this->big_user->id(),
+      'user'        => $this->adminUser,
+      'uid'         => $this->adminUser->id(),
       'request_uri' => $base_root . request_uri(),
       'referer'     => \Drupal::request()->server->get('HTTP_REFERER'),
       'ip'          => '127.0.0.1',
@@ -277,7 +281,7 @@ class DbLogTest extends WebTestBase {
     $this->assertTrue($count_before > 0, format_string('DBLog contains @count records for @name', array('@count' => $count_before, '@name' => $user->getUsername())));
 
     // Login the admin user.
-    $this->drupalLogin($this->big_user);
+    $this->drupalLogin($this->adminUser);
     // Delete the user created at the start of this test.
     // We need to POST here to invoke batch_process() in the internal browser.
     $this->drupalPostForm('user/' . $user->id() . '/cancel', array('user_cancel_method' => 'user_cancel_reassign'), t('Cancel account'));
@@ -363,7 +367,7 @@ class DbLogTest extends WebTestBase {
     $this->assertResponse(403);
 
     // Login the admin user.
-    $this->drupalLogin($this->big_user);
+    $this->drupalLogin($this->adminUser);
     // View the database log report.
     $this->drupalGet('admin/reports/dblog');
     $this->assertResponse(200);
@@ -450,8 +454,8 @@ class DbLogTest extends WebTestBase {
       'variables'   => array(),
       'severity'    => RfcLogLevel::NOTICE,
       'link'        => NULL,
-      'user'        => $this->big_user,
-      'uid'         => $this->big_user->id(),
+      'user'        => $this->adminUser,
+      'uid'         => $this->adminUser->id(),
       'request_uri' => $base_root . request_uri(),
       'referer'     => \Drupal::request()->server->get('HTTP_REFERER'),
       'ip'          => '127.0.0.1',
@@ -462,7 +466,7 @@ class DbLogTest extends WebTestBase {
     // Make sure the table count has actually been incremented.
     $this->assertEqual($count + 1, db_query('SELECT COUNT(*) FROM {watchdog}')->fetchField(), format_string('\Drupal\dblog\Logger\DbLog->log() added an entry to the dblog :count', array(':count' => $count)));
     // Login the admin user.
-    $this->drupalLogin($this->big_user);
+    $this->drupalLogin($this->adminUser);
     // Post in order to clear the database table.
     $this->drupalPostForm('admin/reports/dblog', array(), t('Clear log messages'));
     // Confirm that the logs should be cleared.
@@ -476,7 +480,7 @@ class DbLogTest extends WebTestBase {
    * Tests the database log filter functionality at admin/reports/dblog.
    */
   protected function testFilter() {
-    $this->drupalLogin($this->big_user);
+    $this->drupalLogin($this->adminUser);
 
     // Clear the log to ensure that only generated entries will be found.
     db_delete('watchdog')->execute();

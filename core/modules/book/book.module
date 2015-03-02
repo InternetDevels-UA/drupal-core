@@ -19,6 +19,7 @@ use Drupal\node\Entity\Node;
 use Drupal\Core\Language\LanguageInterface;
 use Drupal\Core\Entity\Display\EntityViewDisplayInterface;
 use Drupal\Core\Template\Attribute;
+use Drupal\Core\Extension\Extension;
 
 /**
  * Implements hook_help().
@@ -67,11 +68,6 @@ function book_theme() {
     'book_export_html' => array(
       'variables' => array('title' => NULL, 'contents' => NULL, 'depth' => NULL),
     ),
-    'book_admin_table' => array(
-      'render element' => 'form',
-      'file' => 'book.admin.inc',
-      'function' => 'theme_book_admin_table',
-    ),
     'book_all_books_block' => array(
       'render element' => 'book_menus',
     ),
@@ -88,8 +84,8 @@ function book_entity_type_build(array &$entity_types) {
   /** @var $entity_types \Drupal\Core\Entity\EntityTypeInterface[] */
   $entity_types['node']
     ->setFormClass('book_outline', 'Drupal\book\Form\BookOutlineForm')
-    ->setLinkTemplate('book-outline-form', 'entity.node.book_outline_form')
-    ->setLinkTemplate('book-remove-form', 'entity.node.book_remove_form');
+    ->setLinkTemplate('book-outline-form', '/node/{node}/outline')
+    ->setLinkTemplate('book-remove-form', '/node/{node}/outline/remove');
 }
 
 /**
@@ -162,9 +158,11 @@ function book_form_node_form_alter(&$form, FormStateInterface $form_state, $form
       '#value' => t('Change book (update list of parents)'),
       '#submit' => array('book_pick_book_nojs_submit'),
       '#weight' => 20,
-      '#attached' => array(
-        'css' => array(drupal_get_path('module', 'book') . '/css/book.admin.css'),
-      ),
+      '#attached' => [
+        'library' => [
+          'book/admin',
+        ],
+      ],
     );
     $form['#entity_builders'][] = 'book_node_builder';
   }
@@ -235,15 +233,19 @@ function book_node_load($nodes) {
 function book_node_view(array &$build, EntityInterface $node, EntityViewDisplayInterface $display, $view_mode) {
   if ($view_mode == 'full') {
     if (!empty($node->book['bid']) && empty($node->in_preview)) {
+      $book_node = Node::load($node->book['bid']);
+      if (!$book_node->access()) {
+        return;
+      }
       $book_navigation = array( '#theme' => 'book_navigation', '#book_link' => $node->book);
       $build['book_navigation'] = array(
         '#markup' => drupal_render($book_navigation),
         '#weight' => 100,
-        '#attached' => array(
-          'css' => array(
-            drupal_get_path('module', 'book') . '/css/book.theme.css',
-          ),
-        ),
+        '#attached' => [
+          'library' => [
+            'book/navigation',
+          ],
+        ],
         // The book navigation is a listing of Node entities, so associate its
         // list cache tag for correct invalidation.
         '#cache' => [
@@ -501,7 +503,7 @@ function template_preprocess_book_node_export_html(&$variables) {
 }
 
 /**
- * Implements template_preprocess_HOOK() for theme_book_tree().
+ * Implements template_preprocess_HOOK() for book-tree.html.twig.
  */
 function template_preprocess_book_tree(&$variables) {
   $variables['tree'] = $variables['tree']['#children'];
@@ -552,7 +554,7 @@ function book_type_is_allowed($type) {
  */
 function book_node_type_update(NodeTypeInterface $type) {
   if ($type->getOriginalId() != $type->id()) {
-    $config = \Drupal::config('book.settings');
+    $config = \Drupal::configFactory()->getEditable('book.settings');
     // Update the list of node types that are allowed to be added to books.
     $allowed_types = $config->get('allowed_types');
     $old_key = array_search($type->getOriginalId(), $allowed_types);
@@ -570,5 +572,35 @@ function book_node_type_update(NodeTypeInterface $type) {
       $config->set('child_type', $type->id());
     }
     $config->save();
+  }
+}
+
+/**
+ * Implements hook_system_info_alter().
+ *
+ * Prevents book module from being uninstalled whilst any book nodes exist or
+ * there are any book outline stored.
+ */
+function book_system_info_alter(&$info, Extension $file, $type) {
+  // It is not safe use the entity query service during maintenance mode.
+  if ($type == 'module' && !defined('MAINTENANCE_MODE') && $file->getName() == 'book') {
+    if (\Drupal::service('book.outline_storage')->hasBooks()) {
+      $info['required'] = TRUE;
+      $info['explanation'] = t('To uninstall Book, delete all content that is part of a book.');
+    }
+    else {
+      // The book node type is provided by the Book module. Prevent uninstall if
+      // there are any nodes of that type.
+      $factory = \Drupal::service('entity.query');
+      $nodes = $factory->get('node')
+        ->condition('type', 'book')
+        ->accessCheck(FALSE)
+        ->range(0, 1)
+        ->execute();
+      if (!empty($nodes)) {
+        $info['required'] = TRUE;
+        $info['explanation'] = t('To uninstall Book, delete all content that has the Book content type.');
+      }
+    }
   }
 }
