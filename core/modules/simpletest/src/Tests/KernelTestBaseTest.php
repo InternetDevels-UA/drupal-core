@@ -21,17 +21,18 @@ class KernelTestBaseTest extends KernelTestBase {
    *
    * @var array
    */
-  public static $modules = array('entity_test');
+  public static $modules = array('entity_test', 'system');
 
   /**
    * {@inheritdoc}
    */
   protected function setUp() {
     $php = <<<'EOS'
+<?php
 # Make sure that the $test_class variable is defined when this file is included.
 if ($test_class) {
 }
-<?php
+
 # Define a function to be able to check that this file was loaded with
 # function_exists().
 if (!function_exists('simpletest_test_stub_settings_function')) {
@@ -44,6 +45,7 @@ EOS;
 
     $original_container = $this->originalContainer;
     parent::setUp();
+    $this->installSchema('system', array('router'));
     $this->assertNotIdentical(\Drupal::getContainer(), $original_container, 'KernelTestBase test creates a new container.');
   }
 
@@ -51,7 +53,7 @@ EOS;
    * Tests expected behavior of setUp().
    */
   function testSetUp() {
-    $modules = array('entity_test');
+    $modules = array('entity_test', 'system');
     $table = 'entity_test';
 
     // Verify that specified $modules have been loaded.
@@ -209,6 +211,8 @@ EOS;
    * Tests expected behavior of installConfig().
    */
   function testInstallConfig() {
+    // The user module has configuration that depends on system.
+    $this->enableModules(array('system'));
     $module = 'user';
 
     // Verify that default config can only be installed for enabled modules.

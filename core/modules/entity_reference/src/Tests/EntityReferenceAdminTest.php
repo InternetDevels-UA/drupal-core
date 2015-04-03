@@ -62,7 +62,13 @@ class EntityReferenceAdminTest extends WebTestBase {
     $bundle_path = 'admin/structure/types/manage/' . $this->type;
 
     // First step: 'Add new field' on the 'Manage fields' page.
-    $this->drupalPostForm($bundle_path . '/fields/add-field', array(
+    $this->drupalGet($bundle_path . '/fields/add-field');
+
+    // Check if the commonly referenced entity types appear in the list.
+    $this->assertOption('edit-new-storage-type', 'field_ui:entity_reference:node');
+    $this->assertOption('edit-new-storage-type', 'field_ui:entity_reference:user');
+
+    $this->drupalPostForm(NULL, array(
       'label' => 'Test label',
       'field_name' => 'test',
       'new_storage_type' => 'entity_reference',
@@ -78,7 +84,7 @@ class EntityReferenceAdminTest extends WebTestBase {
     $this->drupalPostForm(NULL, array(), t('Save field settings'));
 
     // The base handler should be selected by default.
-    $this->assertFieldByName('field[settings][handler]', 'default');
+    $this->assertFieldByName('field[settings][handler]', 'default:node');
 
     // The base handler settings should be displayed.
     $entity_type_id = 'node';

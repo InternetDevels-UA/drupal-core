@@ -135,7 +135,7 @@ class ViewEditTest extends UITestBase {
       $this->drupalGet($langcode_url);
       $this->assertResponse(200);
       if ($view_name == 'test_view') {
-        $this->assertText(t("You don't have translatable entity types."));
+        $this->assertText(t('The view is not based on a translatable entity type or the site is not multilingual.'));
       }
       else {
         $this->assertFieldByName('rendering_language', '***LANGUAGE_entity_translation***');
@@ -148,7 +148,7 @@ class ViewEditTest extends UITestBase {
    */
   public function testRelationRepresentativeNode() {
     // Populate and submit the form.
-    $edit["name[taxonomy_term_data.tid_representative]"] = TRUE;
+    $edit["name[taxonomy_term_field_data.tid_representative]"] = TRUE;
     $this->drupalPostForm('admin/structure/views/nojs/add-handler/test_groupwise_term_ui/default/relationship', $edit, 'Add and configure relationships');
     // Apply changes.
     $edit = array();
